@@ -77,6 +77,39 @@ export function traceContextFromHeaders(
   headers: IncomingHttpHeaders,
 ): FlareTraceContext | undefined {
   const traceparent = headerToString(headers.traceparent);
+  return traceContextFromTraceparent(traceparent);
+}
+
+export function requestContextFromWebRequest(
+  request: Request,
+  statusCode?: number,
+): FlareRequestContext {
+  const parsed = safeParseUrl(request.url);
+
+  return {
+    method: request.method,
+    url: request.url,
+    path: parsed?.pathname,
+    query: parsed ? Object.fromEntries(parsed.searchParams.entries()) : undefined,
+    headers: redactHeaders(headersToRecord(request.headers)),
+    ip:
+      request.headers.get("x-forwarded-for") ??
+      request.headers.get("x-real-ip") ??
+      undefined,
+    userAgent: request.headers.get("user-agent") ?? undefined,
+    statusCode,
+  };
+}
+
+export function traceContextFromWebHeaders(
+  headers: Headers,
+): FlareTraceContext | undefined {
+  return traceContextFromTraceparent(headers.get("traceparent") ?? undefined);
+}
+
+function traceContextFromTraceparent(
+  traceparent: string | undefined,
+): FlareTraceContext | undefined {
   if (!traceparent) return undefined;
 
   const parts = traceparent.split("-");
@@ -89,6 +122,14 @@ export function traceContextFromHeaders(
     traceId,
     spanId,
   };
+}
+
+function headersToRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
 }
 
 function safeParseUrl(value: string): URL | null {

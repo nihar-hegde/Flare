@@ -104,7 +104,9 @@ export {
   expressErrorHandler,
   expressRequestHandler,
   requestContextFromIncoming,
+  requestContextFromWebRequest,
   traceContextFromHeaders,
+  traceContextFromWebHeaders,
   type ExpressLikeRequest,
   type ExpressLikeResponse,
 } from "./middleware.js";

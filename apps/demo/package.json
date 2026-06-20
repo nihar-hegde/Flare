@@ -1,20 +1,28 @@
 {
-  "name": "@flare/node-sdk",
+  "name": "demo",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "scripts": {
-    "lint": "eslint . --max-warnings 0",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "lint": "eslint",
     "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@flare/node-sdk": "workspace:*",
+    "@hono/node-server": "^1",
+    "dotenv": "^16",
+    "hono": "^4"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^20",
     "eslint": "^9",
+    "tsup": "^8",
+    "tsx": "^4",
     "typescript": "5.9.2"
   }
 }

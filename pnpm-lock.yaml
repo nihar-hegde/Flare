@@ -70,6 +70,43 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
+  apps/demo:
+    dependencies:
+      '@flare/node-sdk':
+        specifier: workspace:*
+        version: link:../../packages/flare-sdk
+      '@hono/node-server':
+        specifier: ^1
+        version: 1.19.14(hono@4.12.23)
+      dotenv:
+        specifier: ^16
+        version: 16.0.3
+      hono:
+        specifier: ^4
+        version: 4.12.23
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: ^20
+        version: 20.19.42
+      eslint:
+        specifier: ^9
+        version: 9.39.1(jiti@2.7.0)
+      tsup:
+        specifier: ^8
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.4)(typescript@5.9.2)
+      tsx:
+        specifier: ^4
+        version: 4.22.4
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   apps/web:
     dependencies:
       '@repo/ui':
