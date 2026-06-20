@@ -155,7 +155,7 @@ export default async function IncidentDetailPage({
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-sm text-orange-600 hover:underline dark:text-orange-400"
                       >
-                        View in Sentry
+                        View source event
                         <ExternalLink className="size-3" />
                       </a>
                     </dd>

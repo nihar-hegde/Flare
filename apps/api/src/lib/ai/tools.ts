@@ -2,6 +2,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { InvestigationContext } from "./context.js";
 import { DEFAULT_WINDOW_HOURS, sameFile, stackFiles } from "../correlation.js";
+import {
+  getGithubFileSourceWindow,
+  getGithubPullRequestFilePatch,
+} from "../../services/github-sync.js";
 
 const iso = (date: Date | null | undefined) => (date ? date.toISOString() : null);
 const MAX_RECENT_CHANGES = 10;
@@ -9,6 +13,9 @@ const MAX_FILES_PER_CHANGE = 12;
 const MAX_PR_DETAIL_FILES = 30;
 const MAX_PR_BODY_CHARS = 1_200;
 const MAX_COMMIT_MESSAGE_CHARS = 400;
+const MAX_SOURCE_TOOL_CALLS = 3;
+const MAX_PATCH_TOOL_CALLS = 2;
+const MAX_TOTAL_CODE_CONTEXT_CHARS = 40_000;
 
 function truncate(value: string | null | undefined, max: number): string | null {
   if (!value) return null;
@@ -50,6 +57,9 @@ function summarizeFiles(
  */
 export function buildInvestigationTools(ctx: InvestigationContext) {
   const traceFiles = stackFiles(ctx.stackFrames);
+  let sourceToolCalls = 0;
+  let patchToolCalls = 0;
+  let totalCodeContextChars = 0;
   const withinWindow = (occurredAt: Date | null, windowMs: number) => {
     if (!occurredAt) return false;
     const gap = ctx.analysisTime.getTime() - occurredAt.getTime();
@@ -196,6 +206,112 @@ export function buildInvestigationTools(ctx: InvestigationContext) {
             at: iso(latest.at),
           },
         };
+      },
+    }),
+
+    get_stack_frame_source: tool({
+      description:
+        "Fetch a bounded source-code window from GitHub around a stack-frame file and line. Use this for the top in-app stack frame or another stack file before making code-level claims.",
+      inputSchema: z.object({
+        filename: z
+          .string()
+          .describe("Path from the stack trace, e.g. 'src/services/refunds.ts'."),
+        line: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Line number to center the source window around."),
+        radius: z
+          .number()
+          .int()
+          .positive()
+          .max(80)
+          .optional()
+          .describe("Number of lines to include before and after the target line."),
+      }),
+      execute: async ({ filename, line, radius }) => {
+        if (sourceToolCalls >= MAX_SOURCE_TOOL_CALLS) {
+          return {
+            found: false as const,
+            filename,
+            reason: `Source context budget exhausted (${MAX_SOURCE_TOOL_CALLS} files max).`,
+          };
+        }
+        if (totalCodeContextChars >= MAX_TOTAL_CODE_CONTEXT_CHARS) {
+          return {
+            found: false as const,
+            filename,
+            reason: `Total code context budget exhausted (${MAX_TOTAL_CODE_CONTEXT_CHARS} chars max).`,
+          };
+        }
+
+        sourceToolCalls += 1;
+        const result = await getGithubFileSourceWindow({ filename, line, radius });
+        const contentLength = result.content?.length ?? 0;
+        totalCodeContextChars += contentLength;
+
+        if (totalCodeContextChars > MAX_TOTAL_CODE_CONTEXT_CHARS && result.content) {
+          const allowed = Math.max(
+            0,
+            contentLength - (totalCodeContextChars - MAX_TOTAL_CODE_CONTEXT_CHARS),
+          );
+          return {
+            ...result,
+            content: `${result.content.slice(0, allowed)}\n... [truncated by Flare total code-context budget]`,
+            truncated: true,
+          };
+        }
+
+        return result;
+      },
+    }),
+
+    get_pr_file_patch: tool({
+      description:
+        "Fetch the bounded GitHub patch for one file in one pull request. Use this for a suspect PR that touched a stack-frame file.",
+      inputSchema: z.object({
+        number: z.number().int().describe("The pull request number."),
+        filename: z
+          .string()
+          .describe("The stack-frame or repo-relative filename to inspect."),
+      }),
+      execute: async ({ number, filename }) => {
+        if (patchToolCalls >= MAX_PATCH_TOOL_CALLS) {
+          return {
+            found: false as const,
+            number,
+            filename,
+            reason: `Patch context budget exhausted (${MAX_PATCH_TOOL_CALLS} files max).`,
+          };
+        }
+        if (totalCodeContextChars >= MAX_TOTAL_CODE_CONTEXT_CHARS) {
+          return {
+            found: false as const,
+            number,
+            filename,
+            reason: `Total code context budget exhausted (${MAX_TOTAL_CODE_CONTEXT_CHARS} chars max).`,
+          };
+        }
+
+        patchToolCalls += 1;
+        const result = await getGithubPullRequestFilePatch({ number, filename });
+        const patchLength = result.patch?.length ?? 0;
+        totalCodeContextChars += patchLength;
+
+        if (totalCodeContextChars > MAX_TOTAL_CODE_CONTEXT_CHARS && result.patch) {
+          const allowed = Math.max(
+            0,
+            patchLength - (totalCodeContextChars - MAX_TOTAL_CODE_CONTEXT_CHARS),
+          );
+          return {
+            ...result,
+            patch: `${result.patch.slice(0, allowed)}\n... [truncated by Flare total code-context budget]`,
+            truncated: true,
+          };
+        }
+
+        return result;
       },
     }),
 

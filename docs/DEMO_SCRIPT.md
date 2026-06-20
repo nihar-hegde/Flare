@@ -1,111 +1,175 @@
 # Demo Script & Run-of-Show
 
-Two formats at AIBoomi: **desk round** (~5 min, judges at your table) and **finals** (3-min live
-demo + 2-min Q&A). Same story, different length. Golden rule: **show the “aha” in the first
-30–45 seconds.**
+This demo should show the strongest current loop:
+
+> A merged GitHub PR causes a production error. Flare ingests the error, syncs
+> GitHub, fetches only the relevant source/patch evidence, and explains the
+> exact code path that broke.
 
 ---
 
-## Before you present (setup checklist)
+## Setup Checklist
 
-- [ ] `pnpm dev` running — web (:3000) + api (:8080) healthy
-- [ ] Demo backend running, error buttons reachable
-- [ ] Real `OPENAI_API_KEY` set; do **one practice run** so credits/latency are warm
-- [ ] Dashboard open on the incident list, browser zoomed for readability
-- [ ] **Pre-baked fallback:** one incident already fully investigated, in case live AI is slow
-- [ ] Wifi/tethering backup ready
+- [ ] Main Flare monorepo running:
 
----
+```bash
+cd /Users/niharhegde/Developer/Projects/Flare
+pnpm dev
+```
 
-## The 90-second core demo (talk track)
+- [ ] Standalone demo repo running:
 
-**0:00 — Hook (don’t narrate setup).**
-> “This is Flare. When a backend throws an error in production, Flare figures out which code
-> change caused it. Watch — I’ll break something.”
+```bash
+cd /Users/niharhegde/Developer/Projects/flare-demo-payments-api
+pnpm dev
+```
 
-**0:10 — Trigger the error.**
-Switch to the demo app, click **“Checkout”** (or hit the route). It 500s.
-> “That just threw a real error in a running Node service.”
+- [ ] API env has:
 
-**0:20 — Incident appears.**
-Switch to the Flare dashboard. The new incident shows up (live, via Realtime).
-> “Flare captured it instantly through our SDK — no Sentry, no config. And it’s already
-> investigating.”
+```bash
+INGEST_API_KEY=dev-flare-ingest-key
+GITHUB_OWNER=nihar-hegde
+GITHUB_REPO=flare-demo-payments-api
+GITHUB_TOKEN=<rotated read-only token>
+OPENAI_API_KEY=<real key>
+```
 
-**0:35 — The reveal.** Open the incident.
-> “Here’s the root cause: **PR #284 added unbounded retries**, exhausting the DB connection pool —
-> **87% confidence**.”
-
-Point to, in order:
-1. **Ranked suspects** — “It compared every recent change and ranked PR #284 first.”
-2. **Evidence** — “Grounded: the failing file `src/db/pool.ts` is exactly what that PR modified,
-   minutes before the error.”
-3. **How Flare investigated** — “This is the agent’s actual reasoning trace — it pulled the stack
-   trace, found recent changes, and read the PR.”
-4. **Suggested fix** — “And it recommends the fix: roll back PR #284.”
-
-**1:20 — Close.**
-> “From error to root cause in seconds — no dashboards to dig through. That’s Flare.”
+- [ ] Browser open to `http://localhost:3000`
+- [ ] Demo API on `http://127.0.0.1:4000`
+- [ ] Flare API on `http://localhost:8080`
+- [ ] A pre-investigated incident is available as backup
 
 ---
 
-## Extending to 3 minutes (finals)
+## Best Demo Incident
 
-Add after the core demo:
-- **Why it’s hard / why now** (15s): “Root cause is correlation across the stack trace and the
-  diff — exactly what agentic LLMs unlocked.”
-- **Architecture** (20s): SDK → ingest → agentic AI → dashboard; grounded + guardrailed.
-- **GTM/vision** (20s): developer-led, free SDK → team plan; Sentry/Datadog become just more
-  sources. AI-native observability.
+Use the standalone demo repo PR:
 
----
+```text
+PR #1 — feat: add legacy refund processing endpoint
+```
 
-## If it crashes (resilience > perfection)
+It added:
 
-The handbook literally rewards this: *“If your demo crashes, call it chaos-engineering, then show
-the fallback.”*
-- If the live error doesn’t ingest: “Perfect — chaos engineering. Here’s one we triggered earlier,”
-  and open the **pre-baked investigated incident**.
-- If the AI is slow: keep talking through the architecture slide; it’ll fill in. Or show the
-  pre-baked one and mention the live one will complete in the background.
+```text
+src/services/refunds.ts
+POST /api/refunds
+```
 
----
+The code throws a timeout error unconditionally. This is ideal because Flare can
+prove causality using stack frame + PR patch.
 
-## Anticipated Q&A
+Trigger it:
 
-- **“Why not just use Sentry?”** Sentry tells you *what* broke; Flare tells you *why* and *which
-  change*. We’re AI-native and zero-config — and Sentry becomes just another ingestion source.
-- **“How do you stop the AI from hallucinating a cause?”** Every suspect is resolved back to a real
-  PR/commit; output is schema-validated; confidence + evidence are explicit; there’s a deterministic
-  correlation pre-rank behind the agent.
-- **“What if there are 200 recent PRs?”** The agent works from a pre-ranked candidate set (file
-  overlap + timing), so it focuses on the few that matter.
-- **“Does it need our source code?”** Only metadata + diffs of changed files via GitHub, with
-  permission. Errors come from our lightweight SDK.
-- **“Business model?”** Free SDK + free tier; paid per-seat/per-event team plan. Land one service,
-  expand across repos.
+```bash
+curl -X POST http://127.0.0.1:4000/api/refunds \
+  -H "content-type: application/json" \
+  -d '{"transactionId":"txn_test_123"}'
+```
 
----
+Expected incident title:
 
-## Rubric self-check (100 pts)
+```text
+ConnectionTimeoutError: Failed to connect to legacy refund gateway...
+```
 
-| Criterion | Weight | How we hit it |
-|---|---|---|
-| Problem relevance | 20% | Universal on-call pain; clear user |
-| Innovation | 20% | Agentic stack-trace ↔ code-change correlation; own SDK |
-| Technical execution | 25% | Full pipeline: SDK, ingest, agentic AI w/ guardrails, live dashboard |
-| UX/UI | 15% | Clean shadcn dashboard; evidence + reasoning trace visible |
-| Business viability | 10% | Dev-led GTM; ownable AI-native observability wedge |
-| Presentation | 10% | Tight 90s demo, “aha” up front, crash fallback ready |
+Expected strong report:
+
+- Root cause: `processRefundTransaction` unconditionally throws/simulates a
+  timeout.
+- Suspect: PR #1.
+- Evidence:
+  - top stack frame is `src/services/refunds.ts:6`
+  - PR #1 modified `src/services/refunds.ts`
+  - source window shows the throw
+  - PR patch introduced that throw
+- Suggested fix should prefer targeted code change:
+  - remove/gate the simulated throw
+  - implement real gateway call/error handling
+  - rollback only as mitigation
 
 ---
 
-## Submission checklist (portal locks Sun 9:30 AM — submit by 9:20)
+## 90-Second Talk Track
 
-- [ ] GitHub repo URL (public)
-- [ ] `README.md` ✅ (overview, idea, stack, demo link)
-- [ ] Demo link — hosted app **or** screen recording (strongly favored)
-- [ ] Pitch deck ≤6 slides ([docs/PITCH.md](PITCH.md))
-- [ ] AI Impact Statement ≤200 words ([docs/AI_IMPACT_STATEMENT.md](AI_IMPACT_STATEMENT.md))
-- [ ] `LICENSE` file (MIT)
-- [ ] Record a backup demo video **early** — don’t rely on live wifi at judging
+**0:00 — Hook**
+
+> "This is Flare. It finds which merged PR caused a production error, then shows
+> the evidence from the stack trace and GitHub patch."
+
+**0:10 — Trigger**
+
+Run the refund curl.
+
+> "That just threw a real error from a running Node service using our SDK."
+
+**0:20 — Incident**
+
+Open/refresh the Flare dashboard.
+
+> "Flare ingested the error, grouped it as an incident, and started investigating."
+
+**0:35 — Reveal**
+
+Open incident detail.
+
+> "It linked the crash to PR #1. But it did not just guess from timing. It fetched
+> the exact source around the stack frame and the PR patch that introduced it."
+
+Point to:
+
+1. Root cause.
+2. Change correlation.
+3. Evidence.
+4. "How Flare investigated":
+   - `get_stack_frame_source`
+   - `get_pr_file_patch`
+5. Suggested fix.
+
+**1:15 — Close**
+
+> "The wedge is not another dashboard. It is an evidence-first production
+> regression investigator for teams shipping fast with GitHub and AI coding
+> agents."
+
+---
+
+## Honest Q&A
+
+**How is this different from the AI features in existing error trackers?**
+
+Existing error trackers were built for code a human wrote and understands, and they
+are systems of record — their incentive is to keep your telemetry *and* your fix
+inside their own product. Flare is the neutral broker between whatever error source
+you use and whatever coding agent you use. The wedge is a GitHub-native production
+regression workflow — evidence-linked PR comments, issues, and fix prompts — for
+teams shipping a fast-growing share of AI-generated code.
+
+**Are you sending the whole repo to the model?**
+
+No. Flare syncs metadata, then fetches only bounded source windows and PR patches
+for files that overlap the stack trace. Current budgets cap source/patch context.
+
+**How do you avoid hallucination?**
+
+Every suspect resolves to real DB rows from GitHub. The model has explicit tools,
+structured output, evidence bullets, and confidence is capped if it never
+inspects source/patch evidence.
+
+**What is not production-ready yet?**
+
+Auth, per-org API keys, GitHub App install, UI rendering for source/patch
+evidence, tests, and delivery to Slack/GitHub/Linear.
+
+---
+
+## If Live AI Is Slow
+
+Use a pre-investigated incident. The important proof is the agent trace showing:
+
+```text
+get_stack_frame_source
+get_pr_file_patch
+```
+
+Those two tools distinguish the current demo from shallow PR metadata matching.

@@ -16,6 +16,7 @@ import { syncConfiguredGithubRepo } from "./github-sync.js";
 type NewSuspect = typeof incidentSuspects.$inferInsert;
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+const METADATA_ONLY_CONFIDENCE_CAP = 85;
 
 /**
  * Open a fresh investigation for an incident. Replaces any prior investigation
@@ -103,7 +104,7 @@ async function persistResult(
   result: InvestigationResult,
 ): Promise<void> {
   const { report } = result;
-  const confidence = clamp(report.confidence);
+  const confidence = calibratedConfidence(report.confidence, result.steps);
   const suspectRows = resolveSuspects(ctx, report.suspects, investigationId);
 
   await db.transaction(async (tx) => {
@@ -138,6 +139,21 @@ async function persistResult(
       actor: "flare-agent",
     });
   });
+}
+
+function calibratedConfidence(
+  reportedConfidence: number,
+  steps: InvestigationResult["steps"],
+): number {
+  const confidence = clamp(reportedConfidence);
+  const inspectedCode = steps.some(
+    (step) =>
+      step.tool === "get_stack_frame_source" || step.tool === "get_pr_file_patch",
+  );
+
+  return inspectedCode
+    ? confidence
+    : Math.min(confidence, METADATA_ONLY_CONFIDENCE_CAP);
 }
 
 /**

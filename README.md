@@ -20,7 +20,7 @@ The information exists; it’s just scattered, and stitching it together is manu
 ## What Flare does
 
 1. **Capture** — drop the `@flare/sdk` into any Node.js backend. It catches unhandled errors
-   and sends the stack trace + release/service metadata to Flare. (Sentry/other sources can be
+   and sends the stack trace + release/service metadata to Flare. (Other error sources can be
    added later — same pipeline.)
 2. **Correlate** — Flare pulls recent merged PRs, commits, and deployments from your connected
    GitHub repo.

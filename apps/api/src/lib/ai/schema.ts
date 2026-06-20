@@ -8,10 +8,16 @@ import { z } from "zod";
  */
 
 export const suggestedFixSchema = z.object({
-  title: z.string().describe("Short imperative title, e.g. 'Roll back PR #284'."),
+  title: z
+    .string()
+    .describe(
+      "Short imperative title, e.g. 'Patch src/db/pool.ts connection release path' or 'Roll back PR #284'.",
+    ),
   detail: z
     .string()
-    .describe("One or two sentences explaining what to do and why it helps."),
+    .describe(
+      "One or two specific sentences explaining what to change and why it helps. Prefer file/function-level code fixes when code evidence was inspected; rollback should usually be a fallback mitigation.",
+    ),
   action: z
     .enum(["rollback", "code_change", "config_change", "investigate"])
     .describe("The category of action this fix represents."),

@@ -11,9 +11,14 @@ import {
   type Repository,
 } from "@repo/db";
 import { env } from "../lib/env.js";
+import { sameFile } from "../lib/correlation.js";
 
 const GITHUB_API_URL = "https://api.github.com";
 const DEFAULT_SYNC_LIMIT = 30;
+const DEFAULT_SOURCE_RADIUS = 60;
+const MAX_SOURCE_RADIUS = 80;
+const MAX_SOURCE_CHARS = 20_000;
+const MAX_PATCH_CHARS = 20_000;
 
 interface GithubSyncOptions {
   commitLimit?: number;
@@ -105,6 +110,54 @@ interface GithubPullRequestResponse extends GithubPullRequestListItem {
 
 interface GithubPullRequestFile {
   filename?: string;
+  previous_filename?: string;
+  status?: string;
+  additions?: number;
+  deletions?: number;
+  changes?: number;
+  patch?: string;
+  blob_url?: string;
+  raw_url?: string;
+}
+
+interface GithubContentFileResponse {
+  type: string;
+  path: string;
+  size?: number;
+  encoding?: string;
+  content?: string;
+  html_url?: string;
+  download_url?: string | null;
+}
+
+export interface GithubFileSourceResult {
+  found: boolean;
+  filename: string;
+  path: string | null;
+  ref: string;
+  startLine?: number;
+  endLine?: number;
+  totalLines?: number;
+  sizeBytes?: number;
+  content?: string;
+  url?: string | null;
+  truncated?: boolean;
+  reason?: string;
+}
+
+export interface GithubPullRequestPatchResult {
+  found: boolean;
+  number: number;
+  filename: string;
+  path: string | null;
+  status?: string | null;
+  additions?: number | null;
+  deletions?: number | null;
+  changes?: number | null;
+  patch?: string | null;
+  url?: string | null;
+  truncated?: boolean;
+  reason?: string;
 }
 
 class GithubSyncError extends Error {
@@ -117,6 +170,58 @@ class GithubSyncError extends Error {
 function configuredRepoFullName(): string | null {
   if (!env.GITHUB_OWNER || !env.GITHUB_REPO) return null;
   return `${env.GITHUB_OWNER}/${env.GITHUB_REPO}`;
+}
+
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function truncateCode(value: string, max: number): {
+  value: string;
+  truncated: boolean;
+} {
+  if (value.length <= max) return { value, truncated: false };
+  return {
+    value: `${value.slice(0, max - 80)}\n... [truncated by Flare code-context budget]`,
+    truncated: true,
+  };
+}
+
+function withLineNumbers(lines: string[], startLine: number): string {
+  return lines
+    .map((line, index) => `${String(startLine + index).padStart(4, " ")} | ${line}`)
+    .join("\n");
+}
+
+export function toRepoRelativePath(filename: string): string | null {
+  const repoName = env.GITHUB_REPO;
+  const cleaned = filename
+    .replace(/^file:\/\//, "")
+    .replace(/\\/g, "/")
+    .split(/[?#]/)[0]
+    ?.trim();
+
+  if (!cleaned || cleaned.includes("/node_modules/")) return null;
+  const relative = cleaned.replace(/^\.\//, "");
+  if (!relative.startsWith("/")) {
+    return repoName && relative.startsWith(`${repoName}/`)
+      ? relative.slice(repoName.length + 1)
+      : relative;
+  }
+
+  if (!repoName) return null;
+
+  const parts = relative.split("/").filter(Boolean);
+  const repoIndex = parts.lastIndexOf(repoName);
+  if (repoIndex >= 0 && repoIndex < parts.length - 1) {
+    return parts.slice(repoIndex + 1).join("/");
+  }
+
+  return null;
 }
 
 function requireGithubConfig() {
@@ -164,6 +269,21 @@ async function githubRequest<T>(
   }
 
   return (await response.json()) as T;
+}
+
+async function githubRequestOrNull<T>(
+  token: string,
+  path: string,
+  params?: Record<string, string | number | undefined>,
+): Promise<T | null> {
+  try {
+    return await githubRequest<T>(token, path, params);
+  } catch (error) {
+    if (error instanceof GithubSyncError && error.message.includes("(404)")) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function ensureIntegration(
@@ -462,6 +582,138 @@ export async function syncGithubRepo(
 
 export function getConfiguredGithubFullName(): string | null {
   return configuredRepoFullName();
+}
+
+export async function getGithubFileSourceWindow(input: {
+  filename: string;
+  line?: number;
+  radius?: number;
+  ref?: string;
+}): Promise<GithubFileSourceResult> {
+  const config = requireGithubConfig();
+  const path = toRepoRelativePath(input.filename);
+  const ref = input.ref ?? config.defaultBranch;
+
+  if (!path) {
+    return {
+      found: false,
+      filename: input.filename,
+      path: null,
+      ref,
+      reason: "File path is not inside the configured GitHub repository.",
+    };
+  }
+
+  const file = await githubRequestOrNull<GithubContentFileResponse>(
+    config.token,
+    `/repos/${config.owner}/${config.repo}/contents/${encodePath(path)}`,
+    { ref },
+  );
+
+  if (!file || file.type !== "file" || !file.content) {
+    return {
+      found: false,
+      filename: input.filename,
+      path,
+      ref,
+      reason: "File was not found at the requested ref.",
+    };
+  }
+
+  if (file.encoding && file.encoding !== "base64") {
+    return {
+      found: false,
+      filename: input.filename,
+      path,
+      ref,
+      reason: `Unsupported GitHub content encoding: ${file.encoding}.`,
+    };
+  }
+
+  const decoded = Buffer.from(file.content.replace(/\n/g, ""), "base64").toString(
+    "utf8",
+  );
+  const lines = decoded.split(/\r?\n/);
+  const radius = clamp(input.radius ?? DEFAULT_SOURCE_RADIUS, 5, MAX_SOURCE_RADIUS);
+  const centerLine = input.line
+    ? clamp(input.line, 1, Math.max(1, lines.length))
+    : Math.min(radius, Math.max(1, lines.length));
+  const startLine = Math.max(1, centerLine - radius);
+  const endLine = Math.min(lines.length, centerLine + radius);
+  const numbered = withLineNumbers(lines.slice(startLine - 1, endLine), startLine);
+  const truncated = truncateCode(numbered, MAX_SOURCE_CHARS);
+
+  return {
+    found: true,
+    filename: input.filename,
+    path,
+    ref,
+    startLine,
+    endLine,
+    totalLines: lines.length,
+    sizeBytes: file.size,
+    content: truncated.value,
+    url: file.html_url ?? file.download_url ?? null,
+    truncated: truncated.truncated,
+  };
+}
+
+export async function getGithubPullRequestFilePatch(input: {
+  number: number;
+  filename: string;
+}): Promise<GithubPullRequestPatchResult> {
+  const config = requireGithubConfig();
+  const path = toRepoRelativePath(input.filename);
+
+  if (!path) {
+    return {
+      found: false,
+      number: input.number,
+      filename: input.filename,
+      path: null,
+      reason: "File path is not inside the configured GitHub repository.",
+    };
+  }
+
+  const files = await githubRequest<GithubPullRequestFile[]>(
+    config.token,
+    `/repos/${config.owner}/${config.repo}/pulls/${input.number}/files`,
+    { per_page: 100 },
+  );
+
+  const file = files.find(
+    (candidate) =>
+      (candidate.filename && sameFile(candidate.filename, path)) ||
+      (candidate.previous_filename && sameFile(candidate.previous_filename, path)),
+  );
+
+  if (!file) {
+    return {
+      found: false,
+      number: input.number,
+      filename: input.filename,
+      path,
+      reason: "PR did not include this file in the first 100 changed files.",
+    };
+  }
+
+  const patch = file.patch ?? null;
+  const truncated = patch ? truncateCode(patch, MAX_PATCH_CHARS) : null;
+
+  return {
+    found: true,
+    number: input.number,
+    filename: input.filename,
+    path: file.filename ?? path,
+    status: file.status ?? null,
+    additions: file.additions ?? null,
+    deletions: file.deletions ?? null,
+    changes: file.changes ?? null,
+    patch: truncated?.value ?? null,
+    url: file.blob_url ?? file.raw_url ?? null,
+    truncated: truncated?.truncated ?? false,
+    reason: patch ? undefined : "GitHub did not return a text patch for this file.",
+  };
 }
 
 export async function getGithubSyncStatus(

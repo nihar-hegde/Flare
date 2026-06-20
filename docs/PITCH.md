@@ -1,102 +1,134 @@
-# Flare — Pitch Deck (≤6 slides)
+# Flare — Pitch Notes
 
-Copy-ready content. Keep each slide to a few bold lines; speaker notes are what you *say*, not
-what's on the slide. Target: land the "aha" in the first 30–45 seconds (open with the demo if you can).
+Copy-ready source for a short deck or spoken pitch.
 
----
-
-## Slide 1 — Title & hook
-
-**🔥 Flare**
-**The AI Incident Investigator**
-
-> Production breaks. Flare tells you *which code change caused it* — in seconds.
-
-*Speaker note:* “Every engineer knows the 3 AM page. Something’s down, and you’re frantically
-jumping between your error tracker, GitHub, and deploy logs trying to figure out what changed.
-Flare does that investigation for you.”
+**Positioning:** Flare is the reliability layer for AI-generated codebases. It links a
+production error to the exact change that caused it, proves it with grounded evidence,
+and hands a trustworthy fix to the coding agent your team already uses.
 
 ---
 
-## Slide 2 — Problem & who cares
+## Slide 1 — Hook
 
-**When prod breaks, the engineer becomes the integration layer.**
+**Flare**
 
-- The error tracker says *what* broke. It never says *why*.
-- The answer is scattered across logs, GitHub, deploys, and Slack.
-- Stitching it together is manual, slow, and stressful → high MTTR.
+**Find the change that broke production. Fix it with the agent that wrote it.**
 
-**Who:** backend / on-call / SRE teams at startups & scaleups running production software.
+Production error → stack trace → the exact PR/patch that caused it → an evidence-grounded fix.
 
-*Speaker note:* “Monitoring tells you CPU is 95% or latency spiked. It doesn’t tell you that
-PR #284 from 15 minutes ago is the reason. A human still has to connect those dots — usually the
-most senior person, at the worst possible time.”
+Speaker note:
 
----
-
-## Slide 3 — Insight & why now
-
-**Errors carry stack traces. Git carries diffs. LLMs can finally reason across both.**
-
-- Root-cause analysis is fundamentally *correlation* — exactly what agentic LLMs are now good at.
-- Tool-use + cheap inference make autonomous, grounded investigation newly possible.
-- What needed a senior engineer’s intuition can now be automated and explained.
-
-*Speaker note:* “This wasn’t buildable two years ago. Agentic models that can call tools and
-return structured, grounded output are what make Flare possible right now.”
+> "When production breaks, someone has to figure out which change did it and why.
+> Increasingly, no one on the team wrote that code — an AI did. Flare does the
+> investigation automatically and hands the fix to a coding agent."
 
 ---
 
-## Slide 4 — Solution (LIVE DEMO)
+## Slide 2 — Problem
 
-**Drop in our SDK → get autonomous root-cause analysis.**
+**AI writes the code. No one has the mental model.**
 
-- Live demo: trigger an error → it appears in Flare → AI investigates → **root cause + culprit PR
-  + confidence + fix**, with the agent’s reasoning shown.
+- Teams now merge a fast-growing share of AI-generated code.
+- Volume of shipped code is exploding; human review capacity is flat.
+- When it breaks, the person debugging often did not write it and has no model of it.
+- Error trackers tell you *what* failed — not *which change* caused it, or how to fix it.
 
-*(This slide is mostly the live demo. Show, don’t tell.)*
+Speaker note:
 
-*Speaker note:* run the demo script — click the error, watch the incident appear, let Flare
-name PR #284 at 87% confidence, show evidence + suggested rollback.
-
----
-
-## Slide 5 — How it works (tech & architecture)
-
-**SDK → Ingest → Agentic AI → Dashboard**
-
-- `@flare/sdk` captures errors from any Node backend; GitHub provides recent changes.
-- An **agentic loop** (OpenAI via Vercel AI SDK) correlates the stack trace with code changes
-  using tools, then emits a **schema-validated** report.
-- Grounded: every suspect resolves to a real PR/commit. Guardrails: step cap, time budget,
-  single-shot fallback.
-- Stack: Next.js · Hono · Supabase/Drizzle · Vercel AI SDK.
-
-*Speaker note:* “It’s not a prompt that summarizes an error. It’s an agent that investigates —
-pulls the stack trace, finds what changed those files, reads the diff, and grounds every claim in
-real data.”
+> "The painful part isn't seeing an error. It's staring at code nobody on the team
+> authored, at 2 AM, trying to figure out which of the last forty merges did this."
 
 ---
 
-## Slide 6 — Value, GTM & roadmap
+## Slide 3 — Why Now
 
-**Value:** cut MTTR from hours to seconds; turn every engineer into an incident commander.
+**The bottleneck moved from detecting errors to understanding code nobody wrote.**
 
-**GTM:** bottom-up, developer-led — free SDK + free tier → team plan (per-seat / per-event).
-Land with one backend, expand across services and repos.
+- AI authorship of merged code crossed a threshold in the last 24 months.
+- Stack traces point to files. Git history knows what changed. Agents can inspect both.
+- Cheap inference makes per-incident investigation feasible.
+- Autonomous fixes are only trustworthy when grounded in real evidence — which is
+  exactly what makes "AI fixes AI's bug" safe instead of scary.
 
-**Roadmap:** more sources (Sentry, Datadog) · Slack/PagerDuty delivery · auto-rollback PRs ·
-historical learning across incidents.
+Speaker note:
 
-**Ask:** _<credits / mentorship / pilot users — tailor to the room>_
-
-*Speaker note:* “We own the SDK, so we own the data and the relationship from day one — Sentry
-becomes just another source we plug in. The wedge is zero-config AI root cause; the platform is
-AI-native observability.”
+> "The trick is not dumping the repo into a model. The trick is narrow tools —
+> stack trace, suspect PRs, source window, patch — and evidence you can audit."
 
 ---
 
-### Design tips
-- 6 slides max, ~15 words per slide, one idea each. Big text.
-- Use a real screenshot/GIF of the dashboard on Slide 4/5.
-- Brand color: Flare orange (#f97316). Dark background reads well on projectors.
+## Slide 4 — Demo
+
+**Live regression investigation → grounded fix**
+
+1. Trigger a production crash.
+2. Flare ingests the error.
+3. Flare links it to the exact PR that introduced it.
+4. Flare fetches `src/services/refunds.ts:6` — the line that threw.
+5. Flare fetches the PR patch that added it.
+6. Flare explains the faulty code path — and hands the evidence to a coding agent
+   to produce the fix.
+
+Speaker note:
+
+> "This is not timing correlation. It inspected the line that threw and the patch
+> that introduced it — then turned that into a fix an agent can act on."
+
+---
+
+## Slide 5 — How It Works
+
+**SDK + git evidence + agentic investigation + agent handoff**
+
+- `@flare/node-sdk` captures backend errors with stack, request, and trace context.
+- Ingest stores incidents and events.
+- Repo sync stores recent PRs, commits, and deployments.
+- Agent tools inspect stack frames, PR metadata, source windows, and patches —
+  fetching only the narrow evidence that overlaps the failure.
+- Output is a structured, evidence-linked report and a fix payload a coding agent
+  can consume.
+
+Guardrails (why you can trust it):
+
+- schema-validated output
+- bounded source/patch context budgets
+- confidence is capped when no source/patch was inspected
+- every suspect resolves to a real PR/commit record — no fabrication
+
+---
+
+## Slide 6 — Wedge & Why We Win
+
+**Wedge:** the reliability layer for teams shipping AI-generated code.
+
+The insight incumbents are structurally positioned against:
+
+- Error trackers were built for code a human wrote and understands.
+- They are systems of record — their incentive is to keep your telemetry *and* your
+  fix inside their own product.
+- Flare is the **neutral broker**: between whatever error source you use and whatever
+  coding agent you use. That neutrality is a position a system-of-record won't take,
+  because it commoditizes them.
+
+Honest framing:
+
+> This is a timing-and-positioning bet, grounded in a working evidence-first engine.
+> We win by being the connective tissue between production failures and the agents
+> that fix them — for the emerging majority of code that no human authored.
+
+---
+
+## Slide 7 — Roadmap
+
+Near-term:
+
+- GitHub App: comment on the suspect PR, open issues, draft fix PRs
+- First-class source/patch evidence UI
+- Agent handoff: one-click "fix this" to Claude Code / Cursor / others
+- Auth + per-org API keys, multi-repo support
+
+Direction:
+
+- Ingest from any error source (be the broker, not a silo)
+- Deployment-aware regression bisection
+- Per-codebase failure-pattern memory for pre-merge risk signals

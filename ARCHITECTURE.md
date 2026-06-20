@@ -12,10 +12,10 @@ which change caused it, and what should we do next?"**
 ## 1. Product vision
 
 Flare sits between your observability tools and your humans, collapsing the manual
-"jump between Sentry, GitHub, and Slack" investigation into one automated agent.
+"jump between the error tracker, GitHub, and Slack" investigation into one automated agent.
 
 ```
-Sentry / observability detects an error
+Error tracker / observability detects an error
         │  webhook (error type, stack trace, release, impact)
         ▼
    FLARE ingests + dedupes → creates an Incident
@@ -33,7 +33,7 @@ Sentry / observability detects an error
 ```
 
 **The core insight:** the magic is linking a specific stack frame to the exact PR/commit
-that caused it. Sentry gives `src/db/pool.ts:42` + a release tag; GitHub says that file
+that caused it. The error tracker gives `src/db/pool.ts:42` + a release tag; GitHub says that file
 was changed 15 minutes ago in PR #284. Flare connects those two facts automatically and
 explains the reasoning. That is the demo headline.
 
@@ -94,15 +94,15 @@ The API loads `apps/api/.env` via `dotenv/config`. `packages/db` scripts read th
 ## 4. Feature set (MVP vs Stretch)
 
 **Ingestion (sources)**
-- [MVP] Sentry webhook receiver → normalized incident (error, stack trace, release, impact)
-- [MVP] Webhook signature verification
-- [MVP] Dedupe/grouping (Sentry issue → one incident; repeats bump `occurrence_count`)
-- [MVP] Fast-ack: webhook returns 200 immediately; investigation runs async
-- [Stretch] Generic/other providers (Datadog, CloudWatch, generic JSON)
+- [MVP] SDK ingest endpoint → normalized incident (error, stack trace, release, impact)
+- [MVP] API-key authentication on ingest
+- [MVP] Dedupe/grouping (one fingerprint → one incident; repeats bump `occurrence_count`)
+- [MVP] Fast-ack: ingest returns immediately; investigation runs async
+- [Stretch] Additional error sources behind the same pipeline (generic JSON, webhooks)
 
 **Code context (GitHub)**
 - [MVP] Fetch merged PRs to default branch + recent commits
-- [MVP] Map Sentry release → git SHA; map stack-trace files → changed files
+- [MVP] Map release → git SHA; map stack-trace files → changed files
 - [Stretch] PR diffs + `git blame` on the failing lines
 
 **AI investigation engine (hero)**
@@ -177,7 +177,7 @@ every customer uses them. They return later as source/context integrations and a
 
 - **Phase 1 — API** (next)
   DB client export, REST (`GET /api/incidents`, `GET /api/incidents/:id`), the agentic
-  investigation orchestrator with mocked GitHub/Sentry tool implementations over seed data,
+  investigation orchestrator with mocked GitHub/ingest tool implementations over seed data,
   `POST /api/incidents/:id/investigate`, exported `AppType` for typed web calls.
 
 - **Phase 2 — Web**
@@ -185,7 +185,7 @@ every customer uses them. They return later as source/context integrations and a
   fixes) + Supabase Realtime live updates.
 
 - **Later**
-  Real Sentry webhook + GitHub API behind the tool interfaces; a dummy hosted app with
+  Real SDK ingest + GitHub API behind the tool interfaces; a dummy hosted app with
   routes/buttons that intentionally throw errors to drive end-to-end demos; Slack + email
   delivery; Supabase Auth + multi-tenant.
 
