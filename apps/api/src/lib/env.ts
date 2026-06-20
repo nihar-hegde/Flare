@@ -13,6 +13,12 @@ const envSchema = z.object({
   GITHUB_OWNER: z.string().optional(),
   GITHUB_REPO: z.string().optional(),
   GITHUB_DEFAULT_BRANCH: z.string().default("main"),
+  // GitHub write actions (comment on the suspect PR / open a regression issue).
+  // Off by default; requires a token with `issues:write` + `pull-requests:write`.
+  GITHUB_WRITE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 
   // Incident handling.
   // A successful investigation is NOT re-run just because the same error happens

@@ -241,13 +241,35 @@ function requireGithubConfig() {
   };
 }
 
-function githubHeaders(token: string): HeadersInit {
+function githubHeaders(token: string): Record<string, string> {
   return {
     accept: "application/vnd.github+json",
     authorization: `Bearer ${token}`,
     "user-agent": "flare-mvp-github-sync",
     "x-github-api-version": "2022-11-28",
   };
+}
+
+/** POST to the GitHub API (issue comments, new issues). */
+async function githubWrite<T>(
+  token: string,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(`${GITHUB_API_URL}${path}`, {
+    method: "POST",
+    headers: { ...githubHeaders(token), "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new GithubSyncError(
+      `GitHub POST failed (${response.status}) for ${path}: ${detail.slice(0, 240)}`,
+    );
+  }
+
+  return (await response.json()) as T;
 }
 
 async function githubRequest<T>(
@@ -714,6 +736,37 @@ export async function getGithubPullRequestFilePatch(input: {
     truncated: truncated?.truncated ?? false,
     reason: patch ? undefined : "GitHub did not return a text patch for this file.",
   };
+}
+
+/**
+ * Post a comment on a pull request (or issue) by number. Works on merged/closed
+ * PRs — GitHub treats a PR as an issue for the comments endpoint, so no reopen.
+ */
+export async function postGithubIssueComment(input: {
+  issueNumber: number;
+  body: string;
+}): Promise<{ url: string | null }> {
+  const config = requireGithubConfig();
+  const res = await githubWrite<{ html_url?: string }>(
+    config.token,
+    `/repos/${config.owner}/${config.repo}/issues/${input.issueNumber}/comments`,
+    { body: input.body },
+  );
+  return { url: res.html_url ?? null };
+}
+
+/** Open a new issue in the configured repo. */
+export async function createGithubIssue(input: {
+  title: string;
+  body: string;
+}): Promise<{ url: string | null; number: number | null }> {
+  const config = requireGithubConfig();
+  const res = await githubWrite<{ html_url?: string; number?: number }>(
+    config.token,
+    `/repos/${config.owner}/${config.repo}/issues`,
+    { title: input.title, body: input.body },
+  );
+  return { url: res.html_url ?? null, number: res.number ?? null };
 }
 
 export async function getGithubSyncStatus(

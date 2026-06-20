@@ -2,9 +2,11 @@ import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchIncident } from "@/lib/api";
+import { hasCodeEvidence } from "@/lib/evidence";
 import { formatNumber, timeAgo } from "@/lib/format";
 import { AgentTrace } from "@/components/agent-trace";
 import { SeverityBadge, StatusBadge } from "@/components/badges";
+import { CodeEvidence } from "@/components/code-evidence";
 import { Meter } from "@/components/confidence-meter";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { InvestigateButton } from "@/components/investigate-button";
@@ -123,6 +125,11 @@ export default async function IncidentDetailPage({
 
             {investigation?.status === "complete" ? (
               <>
+                {hasCodeEvidence(investigation.steps) ? (
+                  <Section title="Code evidence">
+                    <CodeEvidence steps={investigation.steps} />
+                  </Section>
+                ) : null}
                 <Section title="Suggested fixes">
                   <SuggestedFixes fixes={investigation.suggestedFixes} />
                 </Section>

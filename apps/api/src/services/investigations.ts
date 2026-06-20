@@ -11,6 +11,7 @@ import { investigate, type InvestigationResult } from "../lib/ai/investigator.js
 import type { ReportSuspect } from "../lib/ai/schema.js";
 import { env } from "../lib/env.js";
 import { loadInvestigationContext } from "./code-context.js";
+import { deliverInvestigationToGithub } from "./github-delivery.js";
 import { syncConfiguredGithubRepo } from "./github-sync.js";
 
 type NewSuspect = typeof incidentSuspects.$inferInsert;
@@ -79,6 +80,19 @@ export async function processInvestigation(
 
     const result = await investigate(ctx);
     await persistResult(ctx, investigationId, result);
+
+    // Optional, gated, non-fatal: turn the finished report into a GitHub action.
+    await deliverInvestigationToGithub({
+      ctx,
+      report: result.report,
+      confidence: calibratedConfidence(result.report.confidence, result.steps),
+      investigationId,
+    }).catch((err) => {
+      console.warn(
+        `[investigation ${investigationId}] GitHub delivery error:`,
+        err instanceof Error ? err.message : err,
+      );
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error(`[investigation ${investigationId}] failed:`, message);
