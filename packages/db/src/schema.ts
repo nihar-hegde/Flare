@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   integer,
@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -177,7 +178,16 @@ export const incidents = pgTable("incidents", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (table) => [
+  // At most ONE active incident per (org, fingerprint). This makes incident
+  // grouping atomic: under a flood of identical errors, the DB lets exactly one
+  // INSERT win and forces the rest down the upsert/update path — so we only ever
+  // investigate once per error. Resolved/ignored incidents are excluded so a
+  // recurrence after resolution legitimately opens a fresh (regression) incident.
+  uniqueIndex("incidents_active_fingerprint_idx")
+    .on(table.organizationId, table.fingerprint)
+    .where(sql`${table.status} not in ('resolved', 'ignored')`),
+]);
 
 // Individual occurrences / raw webhook payloads.
 export type StackFrame = {

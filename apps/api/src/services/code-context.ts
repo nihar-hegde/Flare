@@ -62,7 +62,11 @@ async function findSimilarResolvedIncidents(
 ): Promise<SimilarIncident[]> {
   const matchers = [
     opts.fingerprint ? eq(incidents.fingerprint, opts.fingerprint) : undefined,
-    opts.errorType ? eq(incidents.errorType, opts.errorType) : undefined,
+    // Skip the generic "Error" fallback type: matching on it would link every
+    // unrelated resolved incident that lacked a specific error type.
+    opts.errorType && opts.errorType !== "Error"
+      ? eq(incidents.errorType, opts.errorType)
+      : undefined,
   ].filter((m): m is NonNullable<typeof m> => m !== undefined);
 
   if (matchers.length === 0) return [];

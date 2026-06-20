@@ -14,6 +14,14 @@ const envSchema = z.object({
   GITHUB_REPO: z.string().optional(),
   GITHUB_DEFAULT_BRANCH: z.string().default("main"),
 
+  // Incident handling.
+  // A successful investigation is NOT re-run just because the same error happens
+  // again (that's the whole point — one investigation per error, not per event).
+  // This cooldown only rate-limits *retries of a FAILED* investigation, so a
+  // persistently failing run can't drain AI credits. The manual "Investigate"
+  // action always bypasses it. Set to 0 to retry a failed run on the next event.
+  REINVESTIGATE_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(600),
+
   // Database (Supabase / Postgres via Drizzle)
   DATABASE_URL: z.string().url(),
 
