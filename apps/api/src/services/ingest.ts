@@ -351,17 +351,20 @@ export async function ingestIncident(
       );
     }
 
-    await tx.insert(activityLog).values({
-      incidentId: incident.id,
-      type: "ingested",
-      message: created
-        ? "Incident ingested"
-        : shouldInvestigate
-          ? "Recurrence ingested; re-investigating"
-          : "Recurrence recorded",
-      actor: input.source ?? "flare-ingest",
-      metadata: { eventId: event.id, created, reinvestigated: shouldInvestigate },
-    });
+    // Only the first occurrence writes a timeline entry. Recurrences are already
+    // captured by `occurrenceCount` / `lastSeenAt`; logging one row per event
+    // would bloat writes and bury the timeline in "recurrence" noise at scale.
+    // A re-investigation triggered by a recurrence still shows up via the
+    // investigation lifecycle entries ("investigation_started", etc.).
+    if (created) {
+      await tx.insert(activityLog).values({
+        incidentId: incident.id,
+        type: "ingested",
+        message: "Incident ingested",
+        actor: input.source ?? "flare-ingest",
+        metadata: { eventId: event.id, created: true },
+      });
+    }
 
     return {
       incident,

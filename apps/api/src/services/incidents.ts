@@ -34,11 +34,17 @@ export function getIncidentById(organizationId: string, incidentId: string) {
       eq(incidents.organizationId, organizationId),
     ),
     with: {
+      // A deduped incident can accumulate thousands of occurrences. The detail
+      // view only renders the latest event's stack trace, one current
+      // investigation, and a bounded timeline — so fetch only those, not every
+      // row, or opening a high-volume incident loads thousands of records.
       events: {
         orderBy: (event, { desc }) => [desc(event.receivedAt)],
+        limit: 1,
       },
       investigations: {
         orderBy: (investigation, { desc }) => [desc(investigation.createdAt)],
+        limit: 1,
       },
       suspects: {
         orderBy: (suspect, { asc }) => [asc(suspect.rank)],
@@ -50,6 +56,7 @@ export function getIncidentById(organizationId: string, incidentId: string) {
       },
       activity: {
         orderBy: (entry, { desc }) => [desc(entry.createdAt)],
+        limit: 50,
       },
     },
   });
