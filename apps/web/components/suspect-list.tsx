@@ -22,7 +22,7 @@ export function SuspectList({ suspects }: { suspects: IncidentSuspect[] }) {
         const href = changeHref(suspect.change);
         const isTop = i === 0;
         return (
-          <li key={suspect.id}>
+          <li key={suspect.id} className="min-w-0">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span
@@ -62,7 +62,7 @@ export function SuspectList({ suspects }: { suspects: IncidentSuspect[] }) {
               />
             </div>
             {suspect.rationale ? (
-              <p className="mt-1.5 text-xs text-muted-foreground">
+              <p className="mt-1.5 break-words text-xs leading-relaxed text-muted-foreground">
                 {suspect.rationale}
               </p>
             ) : null}

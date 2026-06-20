@@ -30,14 +30,18 @@ export function SuggestedFixes({ fixes }: { fixes: Fix[] }) {
   return (
     <ul className="space-y-3">
       {fixes.map((fix, i) => (
-        <li key={i} className="rounded-lg border p-3">
-          <div className="flex items-center gap-2">
+        <li key={i} className="min-w-0 rounded-lg border p-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Badge className={cn(actionColor[fix.action])}>
               {actionLabel[fix.action]}
             </Badge>
-            <span className="text-sm font-semibold">{fix.title}</span>
+            <span className="min-w-0 break-words text-sm font-semibold">
+              {fix.title}
+            </span>
           </div>
-          <p className="mt-1.5 text-sm text-muted-foreground">{fix.detail}</p>
+          <p className="mt-1.5 break-words text-sm leading-relaxed text-muted-foreground">
+            {fix.detail}
+          </p>
         </li>
       ))}
     </ul>

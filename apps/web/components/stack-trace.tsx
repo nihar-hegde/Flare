@@ -11,23 +11,34 @@ export function StackTrace({ frames }: { frames: IncidentEvent["stackTrace"] }) 
   }
 
   return (
-    <ol className="space-y-1 font-mono text-xs">
+    <ol className="max-h-[34rem] space-y-1 overflow-y-auto pr-1 font-mono text-xs">
       {frames.map((frame, i) => (
         <li
-          key={`${frame.filename}-${frame.lineno ?? i}`}
+          key={`${i}-${frame.filename}-${frame.lineno ?? "unknown"}-${frame.colno ?? "unknown"}-${frame.function ?? "anonymous"}`}
           className={cn(
-            "rounded px-2 py-1",
-            frame.inApp ? "bg-muted" : "text-muted-foreground",
+            "rounded-lg px-3 py-2 leading-relaxed",
+            frame.inApp
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground",
           )}
         >
-          <span>{frame.filename}</span>
-          {frame.lineno != null ? (
-            <span className="text-orange-600 dark:text-orange-400">
-              :{frame.lineno}
-            </span>
-          ) : null}
+          <div className="break-all">
+            <span>{frame.filename}</span>
+            {frame.lineno != null ? (
+              <span className="text-orange-600 dark:text-orange-400">
+                :{frame.lineno}
+              </span>
+            ) : null}
+            {frame.colno != null ? (
+              <span className="text-orange-600/80 dark:text-orange-400/80">
+                :{frame.colno}
+              </span>
+            ) : null}
+          </div>
           {frame.function ? (
-            <span className="text-muted-foreground"> in {frame.function}</span>
+            <div className="mt-0.5 break-words text-muted-foreground">
+              in {frame.function}
+            </div>
           ) : null}
         </li>
       ))}

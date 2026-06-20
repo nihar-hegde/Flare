@@ -36,7 +36,7 @@ export default async function IncidentDetailPage({
     <>
       <SiteHeader />
       <RealtimeRefresher />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
         <Link
           href="/"
           className="text-sm text-muted-foreground hover:text-foreground"
@@ -44,14 +44,13 @@ export default async function IncidentDetailPage({
           ← All incidents
         </Link>
 
-        {/* Header */}
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
+        <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 max-w-5xl">
             <div className="flex items-center gap-2">
               <SeverityBadge severity={incident.severity} />
               <StatusBadge status={incident.status} />
             </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight">
+            <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight">
               {incident.title}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -60,8 +59,8 @@ export default async function IncidentDetailPage({
               {incident.releaseVersion ? ` · ${incident.releaseVersion}` : ""}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-3">
-            <dl className="flex gap-6 text-right">
+          <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
+            <dl className="grid grid-cols-3 gap-5 text-left lg:text-right">
               <Stat
                 label="Events"
                 value={formatNumber(incident.occurrenceCount)}
@@ -76,9 +75,8 @@ export default async function IncidentDetailPage({
           </div>
         </div>
 
-        <div className="mt-6 grid gap-5 lg:grid-cols-3">
-          {/* Main column */}
-          <div className="space-y-5 lg:col-span-2">
+        <div className="mt-8 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+          <div className="min-w-0 space-y-6">
             <Section
               title="Root cause"
               action={
@@ -138,8 +136,7 @@ export default async function IncidentDetailPage({
             ) : null}
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-6">
             <Section title="Error">
               <dl className="space-y-2 text-sm">
                 <Field label="Type" value={incident.errorType} mono />
@@ -180,7 +177,7 @@ export default async function IncidentDetailPage({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
@@ -199,9 +196,17 @@ function Field({
   mono?: boolean;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={mono ? "font-mono text-xs" : "text-sm"}>{value ?? "—"}</dd>
+      <dd
+        className={
+          mono
+            ? "break-all font-mono text-xs leading-relaxed"
+            : "break-words text-sm leading-relaxed"
+        }
+      >
+        {value ?? "—"}
+      </dd>
     </div>
   );
 }
