@@ -6,6 +6,7 @@ const envSchema = z.object({
     .default("development"),
   PORT: z.coerce.number().default(8080),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  INGEST_API_KEY: z.string().optional(),
 
   // Database (Supabase / Postgres via Drizzle)
   DATABASE_URL: z.string().url(),
