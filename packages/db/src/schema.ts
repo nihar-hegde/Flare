@@ -1,6 +1,5 @@
 import { relations, sql } from "drizzle-orm";
 import {
-  boolean,
   integer,
   jsonb,
   pgEnum,
@@ -119,7 +118,9 @@ export const integrations = pgTable("integrations", {
   externalAccountId: text("external_account_id"),
   config: jsonb("config").$type<Record<string, unknown>>().default({}),
   // Secret material (tokens). Move to a vault / Supabase secrets before prod.
-  credentials: jsonb("credentials").$type<Record<string, unknown>>().default({}),
+  credentials: jsonb("credentials")
+    .$type<Record<string, unknown>>()
+    .default({}),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -143,51 +144,55 @@ export const repositories = pgTable("repositories", {
 // ─────────────────────────────────────────────────────────────
 // Incidents (central entity)
 // ─────────────────────────────────────────────────────────────
-export const incidents = pgTable("incidents", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-  sourceIntegrationId: uuid("source_integration_id").references(
-    () => integrations.id,
-    { onDelete: "set null" },
-  ),
-  // Dedupe / grouping keys from the source (e.g. Sentry issue id + fingerprint).
-  externalId: text("external_id"),
-  fingerprint: text("fingerprint"),
-  title: text("title").notNull(),
-  culprit: text("culprit"),
-  service: text("service"),
-  environment: text("environment"),
-  errorType: text("error_type"),
-  errorMessage: text("error_message"),
-  severity: severityEnum("severity").notNull().default("high"),
-  status: incidentStatusEnum("status").notNull().default("open"),
-  releaseVersion: text("release_version"),
-  permalink: text("permalink"),
-  occurrenceCount: integer("occurrence_count").notNull().default(1),
-  affectedUsers: integer("affected_users"),
-  firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-  resolution: text("resolution"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-}, (table) => [
-  // At most ONE active incident per (org, fingerprint). This makes incident
-  // grouping atomic: under a flood of identical errors, the DB lets exactly one
-  // INSERT win and forces the rest down the upsert/update path — so we only ever
-  // investigate once per error. Resolved/ignored incidents are excluded so a
-  // recurrence after resolution legitimately opens a fresh (regression) incident.
-  uniqueIndex("incidents_active_fingerprint_idx")
-    .on(table.organizationId, table.fingerprint)
-    .where(sql`${table.status} not in ('resolved', 'ignored')`),
-]);
+export const incidents = pgTable(
+  "incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sourceIntegrationId: uuid("source_integration_id").references(
+      () => integrations.id,
+      { onDelete: "set null" },
+    ),
+    // Dedupe / grouping keys from the source (e.g. Sentry issue id + fingerprint).
+    externalId: text("external_id"),
+    fingerprint: text("fingerprint"),
+    title: text("title").notNull(),
+    culprit: text("culprit"),
+    service: text("service"),
+    environment: text("environment"),
+    errorType: text("error_type"),
+    errorMessage: text("error_message"),
+    severity: severityEnum("severity").notNull().default("high"),
+    status: incidentStatusEnum("status").notNull().default("open"),
+    releaseVersion: text("release_version"),
+    permalink: text("permalink"),
+    occurrenceCount: integer("occurrence_count").notNull().default(1),
+    affectedUsers: integer("affected_users"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolution: text("resolution"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // At most ONE active incident per (org, fingerprint). This makes incident
+    // grouping atomic: under a flood of identical errors, the DB lets exactly one
+    // INSERT win and forces the rest down the upsert/update path — so we only ever
+    // investigate once per error. Resolved/ignored incidents are excluded so a
+    // recurrence after resolution legitimately opens a fresh (regression) incident.
+    uniqueIndex("incidents_active_fingerprint_idx")
+      .on(table.organizationId, table.fingerprint)
+      .where(sql`${table.status} not in ('resolved', 'ignored')`),
+  ],
+);
 
 // Individual occurrences / raw webhook payloads.
 export type StackFrame = {
@@ -268,6 +273,44 @@ export type SuggestedFix = {
   action: "rollback" | "code_change" | "config_change" | "investigate";
 };
 
+export type EvidenceItem = {
+  title: string;
+  detail: string;
+  kind:
+    | "stack_trace"
+    | "source"
+    | "patch"
+    | "blame"
+    | "timing"
+    | "deployment"
+    | "similar_incident"
+    | "metadata";
+  strength: "supports" | "rules_out" | "context";
+  reference: string | null;
+};
+
+export type CausalLink = {
+  title: string;
+  detail: string;
+};
+
+export type ConfidenceFactor = {
+  label: string;
+  impact: "raises" | "lowers";
+  detail: string;
+};
+
+export type InvestigationAnalysis = {
+  mechanism: string;
+  failurePoint: string;
+  causalChain: CausalLink[];
+  keyEvidence: EvidenceItem[];
+  confidenceRationale: string;
+  confidenceFactors: ConfidenceFactor[];
+  validationSteps: string[];
+  remainingUncertainty: string[];
+};
+
 // One entry per agent step (tool call) — powers the explainability view.
 export type AgentStep = {
   index: number;
@@ -287,6 +330,7 @@ export const investigations = pgTable("investigations", {
   confidence: integer("confidence"), // 0-100
   summary: text("summary"),
   reasoning: text("reasoning"),
+  analysis: jsonb("analysis").$type<InvestigationAnalysis | null>(),
   suggestedFixes: jsonb("suggested_fixes").$type<SuggestedFix[]>().default([]),
   evidence: jsonb("evidence").$type<string[]>().default([]),
   // The agent's tool-call trace, for the explainability panel.

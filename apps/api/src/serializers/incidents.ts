@@ -4,6 +4,7 @@ import type {
   Incident,
   IncidentSuspect,
   Investigation,
+  InvestigationAnalysis,
   StackFrame,
   SuggestedFix,
 } from "@repo/db";
@@ -11,11 +12,41 @@ import type {
   IncidentDetailRow,
   IncidentListRow,
 } from "../services/incidents.js";
+import { toRepoRelativePath } from "../services/github-sync.js";
 
 // JSON has no Date type — serialize timestamps to ISO strings so the response
 // shape matches exactly what the client receives over the wire.
 const iso = (date: Date | null | undefined): string | null =>
   date ? date.toISOString() : null;
+
+// Display-only path shortening for stack frames / culprit: repo-relative when
+// the file resolves inside the connected repo, the package-relative tail for
+// node_modules, otherwise the original. The raw absolute path stays in the
+// stored event so the agent's GitHub lookups keep working.
+function displayPath(filename: string): string {
+  const repoRelative = toRepoRelativePath(filename);
+  if (repoRelative) return repoRelative;
+  const normalized = filename.replace(/\\/g, "/");
+  const nm = normalized.lastIndexOf("/node_modules/");
+  if (nm >= 0) return normalized.slice(nm + "/node_modules/".length);
+  return filename;
+}
+
+function displayCulprit(culprit: string | null): string | null {
+  if (!culprit) return null;
+  const shorten = (loc: string): string => {
+    const match = loc.match(/^(.*?)(:\d+(?::\d+)?)?$/);
+    const path = match?.[1] ?? loc;
+    if (!path.includes("/")) return loc;
+    return `${displayPath(path)}${match?.[2] ?? ""}`;
+  };
+  return culprit.includes("(")
+    ? culprit.replace(
+        /\(([^)]*)\)/,
+        (_full, inner: string) => `(${shorten(inner)})`,
+      )
+    : shorten(culprit);
+}
 
 // ─────────────────────────────────────────────────────────────
 // Response DTOs
@@ -91,6 +122,7 @@ export interface InvestigationDto {
   confidence: number | null;
   summary: string | null;
   reasoning: string | null;
+  analysis: InvestigationAnalysis | null;
   suggestedFixes: SuggestedFix[];
   evidence: string[];
   steps: AgentStep[];
@@ -242,6 +274,7 @@ function serializeInvestigation(
     confidence: investigation.confidence,
     summary: investigation.summary,
     reasoning: investigation.reasoning,
+    analysis: investigation.analysis ?? null,
     suggestedFixes: investigation.suggestedFixes ?? [],
     evidence: investigation.evidence ?? [],
     steps: investigation.steps ?? [],
@@ -267,7 +300,7 @@ export function serializeIncidentDetail(
     status: row.status,
     errorType: row.errorType,
     errorMessage: row.errorMessage,
-    culprit: row.culprit,
+    culprit: displayCulprit(row.culprit),
     fingerprint: row.fingerprint,
     externalId: row.externalId,
     releaseVersion: row.releaseVersion,
@@ -284,12 +317,13 @@ export function serializeIncidentDetail(
           id: latestEvent.id,
           occurredAt: iso(latestEvent.occurredAt),
           receivedAt: iso(latestEvent.receivedAt),
-          stackTrace: latestEvent.stackTrace ?? [],
+          stackTrace: (latestEvent.stackTrace ?? []).map((frame) => ({
+            ...frame,
+            filename: displayPath(frame.filename),
+          })),
         }
       : null,
-    investigation: investigation
-      ? serializeInvestigation(investigation)
-      : null,
+    investigation: investigation ? serializeInvestigation(investigation) : null,
     suspects: row.suspects.map(serializeSuspect),
     timeline: row.activity.map((entry) => ({
       id: entry.id,

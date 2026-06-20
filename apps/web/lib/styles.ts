@@ -26,8 +26,15 @@ export const severityDot: Record<Severity, string> = {
   low: "bg-sky-500",
 };
 
-/** Bar fill color keyed off a 0-100 likelihood/confidence value. */
-export function meterColor(value: number): string {
+/** Bar fill color for confidence: high means well-supported, not more severe. */
+export function confidenceMeterColor(value: number): string {
+  if (value >= 75) return "bg-emerald-500";
+  if (value >= 50) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+/** Bar fill color for suspect likelihood: high means this change is risky. */
+export function likelihoodMeterColor(value: number): string {
   if (value >= 70) return "bg-red-500";
   if (value >= 40) return "bg-amber-500";
   return "bg-muted-foreground/40";

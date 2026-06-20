@@ -7,7 +7,10 @@ import {
   type Investigation,
 } from "@repo/db";
 import type { InvestigationContext } from "../lib/ai/context.js";
-import { investigate, type InvestigationResult } from "../lib/ai/investigator.js";
+import {
+  investigate,
+  type InvestigationResult,
+} from "../lib/ai/investigator.js";
 import type { ReportSuspect } from "../lib/ai/schema.js";
 import { env } from "../lib/env.js";
 import { loadInvestigationContext } from "./code-context.js";
@@ -71,7 +74,10 @@ export async function processInvestigation(
   try {
     await syncConfiguredGithubRepo(organizationId).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[investigation ${investigationId}] GitHub sync skipped:`, message);
+      console.warn(
+        `[investigation ${investigationId}] GitHub sync skipped:`,
+        message,
+      );
       return null;
     });
 
@@ -130,6 +136,7 @@ async function persistResult(
         confidence,
         summary: report.summary,
         reasoning: report.reasoning,
+        analysis: report.analysis,
         suggestedFixes: report.suggestedFixes,
         evidence: report.evidence,
         steps: result.steps,
@@ -162,7 +169,8 @@ function calibratedConfidence(
   const confidence = clamp(reportedConfidence);
   const inspectedCode = steps.some(
     (step) =>
-      step.tool === "get_stack_frame_source" || step.tool === "get_pr_file_patch",
+      step.tool === "get_stack_frame_source" ||
+      step.tool === "get_pr_file_patch",
   );
 
   return inspectedCode

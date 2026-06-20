@@ -245,6 +245,84 @@ async function main() {
         "Unbounded payment retries introduced 15 min before the incident exhausted the connection pool.",
       reasoning:
         "The top stack frame is src/db/pool.ts:acquireConnection, called from src/payments/retry.ts:retryTransaction. PR #284 (merged 20 min ago, deployed as v2.14.0 15 min ago) modified both files and added retry logic. Logs show retry attempt 47 with no backoff. This matches a prior resolved incident with the same fingerprint.",
+      analysis: {
+        mechanism:
+          "The new retry path repeatedly opens database connections without backoff or a cap, exhausting the pool before checkout requests can acquire a connection.",
+        failurePoint: "src/db/pool.ts:42 in acquireConnection",
+        causalChain: [
+          {
+            title: "Checkout hits retry path",
+            detail:
+              "Payment processing calls retryTransaction after transient payment failures.",
+          },
+          {
+            title: "Retries are unbounded",
+            detail:
+              "PR #284 added retry logic that keeps retrying without exponential backoff or a maximum attempt count.",
+          },
+          {
+            title: "Connections are exhausted",
+            detail:
+              "Each attempt opens or holds a pool connection until all 10 connections are active and new requests time out.",
+          },
+        ],
+        keyEvidence: [
+          {
+            title: "Top frame is in the pool",
+            detail:
+              "The stack trace fails at src/db/pool.ts:42 in acquireConnection.",
+            kind: "stack_trace",
+            strength: "supports",
+            reference: "src/db/pool.ts:42",
+          },
+          {
+            title: "Suspect PR touched failing files",
+            detail:
+              "PR #284 modified both src/db/pool.ts and src/payments/retry.ts shortly before the incident.",
+            kind: "patch",
+            strength: "supports",
+            reference: "PR #284",
+          },
+          {
+            title: "Timing matches deploy",
+            detail:
+              "The incident began about 3 minutes after v2.14.0 deployed.",
+            kind: "timing",
+            strength: "supports",
+            reference: "v2.14.0",
+          },
+        ],
+        confidenceRationale:
+          "Confidence is high because the failing stack frame, changed files, deployment timing, and retry log evidence all point to the same code path.",
+        confidenceFactors: [
+          {
+            label: "Stack/source overlap",
+            impact: "raises",
+            detail:
+              "The suspect PR changed the top failing frame and the caller on the retry path.",
+          },
+          {
+            label: "Prior incident match",
+            impact: "raises",
+            detail:
+              "A resolved incident with the same fingerprint had the same pool-exhaustion mechanism.",
+          },
+          {
+            label: "No source patch shown in seed",
+            impact: "lowers",
+            detail:
+              "The seed report summarizes the patch rather than embedding a full source diff.",
+          },
+        ],
+        validationSteps: [
+          "Deploy a rollback or capped retry fix and confirm connection acquisition errors stop.",
+          "Run the checkout flow under transient payment failure and verify retries stop after the configured cap.",
+          "Watch active pool connections return below saturation during the retry scenario.",
+        ],
+        remainingUncertainty: [
+          "The seed scenario does not include live pool metrics beyond the summarized retry log.",
+        ],
+      },
       suggestedFixes: [
         {
           title: "Roll back PR #284",
@@ -269,8 +347,7 @@ async function main() {
         {
           index: 0,
           tool: "get_stack_trace",
-          reasoning:
-            "Identify which files/functions are on the failing path.",
+          reasoning: "Identify which files/functions are on the failing path.",
           output: "Top in-app frame: src/db/pool.ts:acquireConnection:42",
         },
         {

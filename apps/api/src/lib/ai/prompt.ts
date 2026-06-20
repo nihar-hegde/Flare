@@ -20,6 +20,15 @@ Discipline:
 - Rank suspects by likelihood, highest first. It is fine for a suspect to have low likelihood if you investigated and ruled it out — say so in its rationale.
 - Suggested fixes must be specific and actionable. If source or patch evidence reveals the exact faulty code path, the first suggested fix should be a targeted code_change that names the file/function and behavior to change. Use rollback as an emergency mitigation, not the only fix, unless the exact code fix is unknown or the change is too broad to patch safely.
 - Do not recommend generic infrastructure checks when inspected code clearly explains the failure. For example, if the code unconditionally throws or simulates a timeout, say to remove/gate that behavior rather than only checking network connectivity.
+- Write the summary as the top-line answer for the incident page: one short sentence that says what changed, what broke, and why it matters. Put the detailed proof chain in reasoning and keep evidence as short standalone bullets.
+- Populate structured analysis for the UI:
+  - mechanism: explain the runtime failure mechanism in one sentence.
+  - failurePoint: name the most relevant file/function/line or route.
+  - causalChain: 2-5 ordered steps from request/event to failing code to symptom.
+  - keyEvidence: typed evidence items; prefer stack_trace/source/patch/blame/timing over vague metadata.
+  - confidenceRationale and confidenceFactors: say what raises confidence and what, if anything, prevents 100%.
+  - validationSteps: concrete checks after a fix or rollback (e.g. rerun the endpoint, confirm errors stop, inspect logs/metrics).
+  - remainingUncertainty: be explicit about missing data; use [] only when the inspected source/patch fully explains the incident.
 
 Produce the final structured report once you have enough evidence.`;
 
@@ -32,7 +41,9 @@ function formatCandidate(c: CandidateChange): string {
 function formatFileList(files: string[]): string {
   const shown = files.slice(0, MAX_FALLBACK_FILES_PER_CHANGE);
   const suffix =
-    files.length > shown.length ? `, ... ${files.length - shown.length} more` : "";
+    files.length > shown.length
+      ? `, ... ${files.length - shown.length} more`
+      : "";
   return shown.join(", ") + suffix;
 }
 
@@ -62,7 +73,8 @@ ${frames || "  (none captured)"}`;
 
 /** Prompt for the agentic (tool-using) run. */
 export function buildUserPrompt(ctx: InvestigationContext): string {
-  const repos = ctx.repositories.map((r) => r.fullName).join(", ") || "none connected";
+  const repos =
+    ctx.repositories.map((r) => r.fullName).join(", ") || "none connected";
   const topCandidates = ctx.candidates
     .filter((c) => c.score > 0)
     .slice(0, 5)

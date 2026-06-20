@@ -1,15 +1,18 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { buildAgentFixPrompt } from "@/lib/agent-fix-prompt";
 import { fetchIncident } from "@/lib/api";
 import { hasCodeEvidence } from "@/lib/evidence";
 import { formatNumber, timeAgo } from "@/lib/format";
+import { AgentFixPrompt } from "@/components/agent-fix-prompt";
 import { AgentTrace } from "@/components/agent-trace";
 import { SeverityBadge, StatusBadge } from "@/components/badges";
 import { CodeEvidence } from "@/components/code-evidence";
-import { Meter } from "@/components/confidence-meter";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { InvestigateButton } from "@/components/investigate-button";
+import { InvestigationOverview } from "@/components/investigation-overview";
+import { InvestigationProgress } from "@/components/investigation-progress";
 import { RealtimeRefresher } from "@/components/realtime-refresher";
 import { Section } from "@/components/section";
 import { SiteHeader } from "@/components/site-header";
@@ -33,6 +36,10 @@ export default async function IncidentDetailPage({
   }
 
   const investigation = incident.investigation;
+  const agentFixPrompt =
+    investigation?.status === "complete"
+      ? buildAgentFixPrompt({ incident, investigation })
+      : null;
 
   return (
     <>
@@ -67,10 +74,14 @@ export default async function IncidentDetailPage({
                 label="Events"
                 value={formatNumber(incident.occurrenceCount)}
               />
-              <Stat label="Users" value={formatNumber(incident.affectedUsers)} />
+              <Stat
+                label="Users"
+                value={formatNumber(incident.affectedUsers)}
+              />
               <Stat label="First seen" value={timeAgo(incident.firstSeenAt)} />
             </dl>
             <InvestigateButton
+              key={`${incident.id}:${investigation?.status ?? "none"}`}
               incidentId={incident.id}
               status={investigation?.status ?? null}
             />
@@ -80,11 +91,14 @@ export default async function IncidentDetailPage({
         <div className="mt-8 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
           <div className="min-w-0 space-y-6">
             <Section
-              title="Root cause"
+              title="Investigation summary"
               action={
-                investigation?.confidence != null
-                  ? `${investigation.confidence}% confidence`
-                  : null
+                investigation?.status === "complete" &&
+                investigation.completedAt
+                  ? `Completed ${timeAgo(investigation.completedAt)}`
+                  : investigation?.confidence != null
+                    ? `${investigation.confidence}% confidence`
+                    : null
               }
             >
               {!investigation ? (
@@ -93,31 +107,27 @@ export default async function IncidentDetailPage({
                 </p>
               ) : investigation.status === "running" ||
                 investigation.status === "pending" ? (
-                <p className="text-sm text-muted-foreground italic">
-                  Flare is investigating this incident…
-                </p>
+                <InvestigationProgress
+                  incidentId={incident.id}
+                  status={investigation.status}
+                />
               ) : investigation.status === "failed" ? (
                 <p className="text-sm text-destructive">
                   Investigation failed. Try running it again.
                 </p>
               ) : (
-                <div className="space-y-4">
-                  {investigation.confidence != null ? (
-                    <Meter value={investigation.confidence} />
-                  ) : null}
-                  {investigation.rootCause ? (
-                    <p className="text-sm font-medium">
-                      {investigation.rootCause}
-                    </p>
-                  ) : null}
-                  {investigation.reasoning ? (
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {investigation.reasoning}
-                    </p>
-                  ) : null}
-                </div>
+                <InvestigationOverview
+                  incident={incident}
+                  investigation={investigation}
+                />
               )}
             </Section>
+
+            {investigation?.status === "complete" && agentFixPrompt ? (
+              <Section title="Agent fix prompt">
+                <AgentFixPrompt prompt={agentFixPrompt} />
+              </Section>
+            ) : null}
 
             <Section title="Change correlation">
               <SuspectList suspects={incident.suspects} />
