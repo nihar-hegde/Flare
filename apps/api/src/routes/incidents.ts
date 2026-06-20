@@ -7,6 +7,7 @@ import {
   serializeIncidentDetail,
   serializeIncidentListItem,
 } from "../serializers/incidents.js";
+import { openDraftFixPr } from "../services/fix-pr.js";
 import { getIncidentById, listIncidents } from "../services/incidents.js";
 import {
   processInvestigation,
@@ -54,4 +55,11 @@ export const incidentsRoutes = new Hono<AppEnv>()
       { data: { investigationId: investigation.id, status: investigation.status } },
       202,
     );
+  })
+  // Close the loop: open a (draft) fix PR in the connected repo from the
+  // completed investigation's handoff. User-initiated; idempotent per incident.
+  .post("/:id/fix-pr", zValidator("param", incidentParams), async (c) => {
+    const { id } = c.req.valid("param");
+    const result = await openDraftFixPr(CURRENT_ORG_ID, id);
+    return c.json({ data: result });
   });

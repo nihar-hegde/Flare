@@ -50,12 +50,16 @@ export async function deliverInvestigationToGithub(args: DeliverArgs): Promise<v
     ? ctx.pullRequests.find((p) => p.number === prNumber)
     : undefined;
 
-  const body = formatReportMarkdown(
+  const fallbackBody = formatReportMarkdown(
     ctx.incident,
     report,
     confidence,
     prSuspect?.rationale,
   );
+  const prCommentBody =
+    artifactBody(report, "pr_comment") ?? fallbackBody;
+  const issueBody =
+    artifactBody(report, "github_issue") ?? fallbackBody;
 
   try {
     const fresh = pr?.mergedAt
@@ -68,16 +72,16 @@ export async function deliverInvestigationToGithub(args: DeliverArgs): Promise<v
     if (pr && fresh) {
       const { url } = await postGithubIssueComment({
         issueNumber: pr.number,
-        body,
+        body: prCommentBody,
       });
       message = `Commented on PR #${pr.number} with the investigation`;
       metadata = { channel: "github", kind: "pr_comment", ref: `#${pr.number}`, url, investigationId };
     } else {
       const title = `Flare: production regression — ${ctx.incident.title}`.slice(0, 220);
-      const issueBody = pr
-        ? `${body}\n\n---\n_Introduced in #${pr.number} (merged ${pr.mergedAt?.toISOString() ?? "unknown"}). Surfacing now via Flare._`
-        : body;
-      const { url, number } = await createGithubIssue({ title, body: issueBody });
+      const body = pr
+        ? `${issueBody}\n\n---\n_Introduced in #${pr.number} (merged ${pr.mergedAt?.toISOString() ?? "unknown"}). Surfacing now via Flare._`
+        : issueBody;
+      const { url, number } = await createGithubIssue({ title, body });
       message = `Opened issue #${number ?? "?"} for this regression`;
       metadata = { channel: "github", kind: "issue", ref: `#${number ?? "?"}`, url, investigationId };
     }
@@ -97,6 +101,16 @@ export async function deliverInvestigationToGithub(args: DeliverArgs): Promise<v
       err instanceof Error ? err.message : err,
     );
   }
+}
+
+function artifactBody(
+  report: InvestigationReport,
+  kind: NonNullable<InvestigationReport["fixHandoff"]>["artifacts"][number]["kind"],
+): string | null {
+  return (
+    report.fixHandoff?.artifacts.find((artifact) => artifact.kind === kind)
+      ?.body ?? null
+  );
 }
 
 function bulletList(items: string[], max: number, empty: string): string {

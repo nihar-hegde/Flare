@@ -1,6 +1,7 @@
 import type {
   ActivityLog,
   AgentStep,
+  FixHandoff,
   Incident,
   IncidentSuspect,
   Investigation,
@@ -115,6 +116,13 @@ export interface IncidentSuspectDto {
   change: SuspectChange;
 }
 
+export interface FixPrInfo {
+  url: string | null;
+  number: number | null;
+  draft: boolean;
+  applied: boolean;
+}
+
 export interface InvestigationDto {
   id: string;
   status: Investigation["status"];
@@ -123,9 +131,13 @@ export interface InvestigationDto {
   summary: string | null;
   reasoning: string | null;
   analysis: InvestigationAnalysis | null;
+  fixHandoff: FixHandoff | null;
   suggestedFixes: SuggestedFix[];
   evidence: string[];
   steps: AgentStep[];
+  // The fix PR already opened for this investigation, if any (so the UI reflects
+  // it on load instead of offering to open a duplicate).
+  fixPr: FixPrInfo | null;
   model: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -264,8 +276,33 @@ function serializeSuspect(
   };
 }
 
+/** The most recent fix PR opened for this investigation, from the activity log. */
+function findFixPr(
+  activity: IncidentDetailRow["activity"],
+  investigationId: string,
+): FixPrInfo | null {
+  const entry = activity.find((row) => {
+    const meta = row.metadata as Record<string, unknown> | null;
+    return (
+      row.type === "notified" &&
+      meta?.["kind"] === "draft_pr" &&
+      meta["investigationId"] === investigationId
+    );
+  });
+  if (!entry) return null;
+
+  const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+  return {
+    url: typeof meta["url"] === "string" ? meta["url"] : null,
+    number: typeof meta["number"] === "number" ? meta["number"] : null,
+    draft: meta["draft"] === true,
+    applied: meta["applied"] === true,
+  };
+}
+
 function serializeInvestigation(
   investigation: IncidentDetailRow["investigations"][number],
+  activity: IncidentDetailRow["activity"],
 ): InvestigationDto {
   return {
     id: investigation.id,
@@ -275,9 +312,11 @@ function serializeInvestigation(
     summary: investigation.summary,
     reasoning: investigation.reasoning,
     analysis: investigation.analysis ?? null,
+    fixHandoff: investigation.fixHandoff ?? null,
     suggestedFixes: investigation.suggestedFixes ?? [],
     evidence: investigation.evidence ?? [],
     steps: investigation.steps ?? [],
+    fixPr: findFixPr(activity, investigation.id),
     model: investigation.model,
     startedAt: iso(investigation.startedAt),
     completedAt: iso(investigation.completedAt),
@@ -323,7 +362,9 @@ export function serializeIncidentDetail(
           })),
         }
       : null,
-    investigation: investigation ? serializeInvestigation(investigation) : null,
+    investigation: investigation
+      ? serializeInvestigation(investigation, row.activity)
+      : null,
     suspects: row.suspects.map(serializeSuspect),
     timeline: row.activity.map((entry) => ({
       id: entry.id,

@@ -132,6 +132,116 @@ export const analysisSchema = z.object({
     ),
 });
 
+export const fixValidationStepSchema = z.object({
+  title: z
+    .string()
+    .describe(
+      "Short validation title, e.g. 'Exercise refund endpoint' or 'Run focused regression test'.",
+    ),
+  command: z
+    .string()
+    .nullable()
+    .describe(
+      "Exact command, request, or check to run when known, e.g. 'pnpm test refunds'. Use null when no exact command can be inferred.",
+    ),
+  expectedOutcome: z
+    .string()
+    .describe("What must be true for the validation step to pass."),
+});
+
+export const handoffArtifactSchema = z.object({
+  kind: z
+    .enum([
+      "agent_prompt",
+      "github_issue",
+      "pr_comment",
+      "slack_update",
+      "pr_description",
+    ])
+    .describe("The ready-to-copy handoff artifact type."),
+  title: z
+    .string()
+    .describe("Short UI label, e.g. 'Agent Prompt' or 'PR Comment'."),
+  description: z
+    .string()
+    .describe("One short sentence explaining where this artifact should be used."),
+  body: z
+    .string()
+    .describe(
+      "Complete ready-to-copy Markdown/plaintext body. Include concrete incident context, proof, fix, validation, and remaining risk when relevant.",
+    ),
+});
+
+export const fixHandoffSchema = z.object({
+  headline: z
+    .string()
+    .describe(
+      "One sentence that says what caused the incident and what the engineer should do next.",
+    ),
+  fixPlan: z
+    .object({
+      title: z
+        .string()
+        .describe("Short imperative title for the primary fix."),
+      action: z
+        .enum(["rollback", "code_change", "config_change", "investigate"])
+        .describe("The category of action for the primary fix."),
+      detail: z
+        .string()
+        .describe(
+          "Specific implementation guidance naming files/functions and behavior to change when known.",
+        ),
+      targetFiles: z
+        .array(z.string())
+        .max(8)
+        .describe(
+          "Repo-relative files the fixing agent should inspect or edit first. Use [] only when no file can be inferred.",
+        ),
+    })
+    .describe("The primary fix plan, kept consistent with suggestedFixes[0]."),
+  proof: z
+    .array(evidenceItemSchema)
+    .min(2)
+    .max(6)
+    .describe(
+      "The strongest proof that connects the suspect change to the incident. Prefer concrete stack/source/patch/blame/timing references.",
+    ),
+  validationPlan: z
+    .array(fixValidationStepSchema)
+    .min(2)
+    .max(5)
+    .describe(
+      "Concrete post-fix validation steps with commands when they can be inferred.",
+    ),
+  recommendedOwnerFiles: z
+    .array(z.string())
+    .max(8)
+    .describe(
+      "Files or areas that should own the fix/review. Prefer files from stack frames and inspected patches.",
+    ),
+  remainingRisk: z
+    .array(z.string())
+    .max(4)
+    .describe(
+      "Risks or open questions to mention in the fixing PR. Use [] when there are no meaningful known risks.",
+    ),
+  artifacts: z
+    .array(handoffArtifactSchema)
+    .min(5)
+    .max(5)
+    .refine(
+      (artifacts) =>
+        new Set(artifacts.map((a) => a.kind)).size === artifacts.length,
+      {
+        message:
+          "Each artifact kind must appear exactly once: agent_prompt, github_issue, pr_comment, slack_update, pr_description.",
+      },
+    )
+    .describe(
+      "Exactly five copy-ready artifacts, one of each kind: agent_prompt, github_issue, pr_comment, slack_update, and pr_description.",
+    ),
+});
+
 export const reportSuspectSchema = z.object({
   changeType: z
     .enum(["pull_request", "commit", "deployment"])
@@ -182,6 +292,11 @@ export const investigationReportSchema = z.object({
   analysis: analysisSchema.describe(
     "Structured data for the incident overview UI. This must be grounded in tool output and should not introduce facts absent from summary/reasoning/evidence.",
   ),
+  fixHandoff: fixHandoffSchema
+    .nullable()
+    .describe(
+      "First-class fix handoff for engineers: proof, fix plan, validation plan, and copy-ready artifacts. This must be grounded in the same evidence as the analysis and suspects. Use null only when the evidence is too thin to assemble a useful handoff.",
+    ),
   suspects: z
     .array(reportSuspectSchema)
     .describe(

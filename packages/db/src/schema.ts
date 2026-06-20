@@ -311,6 +311,41 @@ export type InvestigationAnalysis = {
   remainingUncertainty: string[];
 };
 
+export type FixValidationStep = {
+  title: string;
+  command: string | null;
+  expectedOutcome: string;
+};
+
+export type HandoffArtifactKind =
+  | "agent_prompt"
+  | "github_issue"
+  | "pr_comment"
+  | "slack_update"
+  | "pr_description";
+
+export type HandoffArtifact = {
+  kind: HandoffArtifactKind;
+  title: string;
+  description: string;
+  body: string;
+};
+
+export type FixHandoff = {
+  headline: string;
+  fixPlan: {
+    title: string;
+    action: SuggestedFix["action"];
+    detail: string;
+    targetFiles: string[];
+  };
+  proof: EvidenceItem[];
+  validationPlan: FixValidationStep[];
+  recommendedOwnerFiles: string[];
+  remainingRisk: string[];
+  artifacts: HandoffArtifact[];
+};
+
 // One entry per agent step (tool call) — powers the explainability view.
 export type AgentStep = {
   index: number;
@@ -331,6 +366,7 @@ export const investigations = pgTable("investigations", {
   summary: text("summary"),
   reasoning: text("reasoning"),
   analysis: jsonb("analysis").$type<InvestigationAnalysis | null>(),
+  fixHandoff: jsonb("fix_handoff").$type<FixHandoff | null>(),
   suggestedFixes: jsonb("suggested_fixes").$type<SuggestedFix[]>().default([]),
   evidence: jsonb("evidence").$type<string[]>().default([]),
   // The agent's tool-call trace, for the explainability panel.

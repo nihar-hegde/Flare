@@ -137,6 +137,7 @@ async function persistResult(
         summary: report.summary,
         reasoning: report.reasoning,
         analysis: report.analysis,
+        fixHandoff: report.fixHandoff,
         suggestedFixes: report.suggestedFixes,
         evidence: report.evidence,
         steps: result.steps,

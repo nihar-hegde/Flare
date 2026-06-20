@@ -1,15 +1,15 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { buildAgentFixPrompt } from "@/lib/agent-fix-prompt";
 import { fetchIncident } from "@/lib/api";
 import { hasCodeEvidence } from "@/lib/evidence";
+import { buildFixHandoff } from "@/lib/fix-handoff";
 import { formatNumber, timeAgo } from "@/lib/format";
-import { AgentFixPrompt } from "@/components/agent-fix-prompt";
 import { AgentTrace } from "@/components/agent-trace";
 import { SeverityBadge, StatusBadge } from "@/components/badges";
 import { CodeEvidence } from "@/components/code-evidence";
 import { EvidencePanel } from "@/components/evidence-panel";
+import { FixHandoff } from "@/components/fix-handoff";
 import { InvestigateButton } from "@/components/investigate-button";
 import { InvestigationOverview } from "@/components/investigation-overview";
 import { InvestigationProgress } from "@/components/investigation-progress";
@@ -36,9 +36,9 @@ export default async function IncidentDetailPage({
   }
 
   const investigation = incident.investigation;
-  const agentFixPrompt =
+  const fixHandoff =
     investigation?.status === "complete"
-      ? buildAgentFixPrompt({ incident, investigation })
+      ? buildFixHandoff({ incident, investigation })
       : null;
 
   return (
@@ -123,9 +123,13 @@ export default async function IncidentDetailPage({
               )}
             </Section>
 
-            {investigation?.status === "complete" && agentFixPrompt ? (
-              <Section title="Agent fix prompt">
-                <AgentFixPrompt prompt={agentFixPrompt} />
+            {investigation?.status === "complete" && fixHandoff ? (
+              <Section title="Fix handoff">
+                <FixHandoff
+                  handoff={fixHandoff}
+                  incidentId={incident.id}
+                  initialPr={investigation?.fixPr ?? null}
+                />
               </Section>
             ) : null}
 

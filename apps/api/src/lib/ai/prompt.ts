@@ -29,6 +29,16 @@ Discipline:
   - confidenceRationale and confidenceFactors: say what raises confidence and what, if anything, prevents 100%.
   - validationSteps: concrete checks after a fix or rollback (e.g. rerun the endpoint, confirm errors stop, inspect logs/metrics).
   - remainingUncertainty: be explicit about missing data; use [] only when the inspected source/patch fully explains the incident.
+- Populate fixHandoff as the engineer-ready handoff (use null only when the evidence is too thin to assemble a useful one):
+  - headline: "this caused it and here is the next action" in one sentence.
+  - fixPlan: keep it consistent with suggestedFixes[0], naming the primary files/functions to inspect or edit first.
+  - proof: the strongest evidence only, using concrete stack/source/patch/blame/timing references.
+  - validationPlan: specific commands, HTTP requests, test names, or runtime checks when they can be inferred; command can be null when no exact command is known.
+  - recommendedOwnerFiles: stack-frame files and suspect patch files most relevant to the fix.
+  - remainingRisk: risks/open questions that a fixing PR should mention.
+  - artifacts: exactly five complete ready-to-copy artifacts with kinds agent_prompt, github_issue, pr_comment, slack_update, and pr_description.
+- The agent_prompt artifact must be useful when pasted into a coding agent with no extra explanation: include incident context, proof, suspected change, exact fix plan, relevant files, validation plan, and constraints to keep the change focused.
+- The GitHub issue and PR comment artifacts must be professional, evidence-backed, and immediately sendable. The Slack update should be short. The PR description should be usable as the body of the fixing PR.
 
 Produce the final structured report once you have enough evidence.`;
 

@@ -123,6 +123,7 @@ interface GithubPullRequestFile {
 interface GithubContentFileResponse {
   type: string;
   path: string;
+  sha?: string;
   size?: number;
   encoding?: string;
   content?: string;
@@ -270,6 +271,43 @@ async function githubWrite<T>(
   }
 
   return (await response.json()) as T;
+}
+
+/** PUT to the GitHub API (create/update file contents on a branch). */
+async function githubPut<T>(
+  token: string,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(`${GITHUB_API_URL}${path}`, {
+    method: "PUT",
+    headers: { ...githubHeaders(token), "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new GithubSyncError(
+      `GitHub PUT failed (${response.status}) for ${path}: ${detail.slice(0, 240)}`,
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+/** DELETE on the GitHub API (e.g. removing a branch ref). 404 is treated as ok. */
+async function githubDelete(token: string, path: string): Promise<void> {
+  const response = await fetch(`${GITHUB_API_URL}${path}`, {
+    method: "DELETE",
+    headers: githubHeaders(token),
+  });
+
+  if (!response.ok && response.status !== 404) {
+    const detail = await response.text().catch(() => "");
+    throw new GithubSyncError(
+      `GitHub DELETE failed (${response.status}) for ${path}: ${detail.slice(0, 240)}`,
+    );
+  }
 }
 
 async function githubRequest<T>(
@@ -767,6 +805,153 @@ export async function createGithubIssue(input: {
     { title: input.title, body: input.body },
   );
   return { url: res.html_url ?? null, number: res.number ?? null };
+}
+
+interface GithubRefResponse {
+  object: { sha: string };
+}
+
+export interface GithubFileContent {
+  found: boolean;
+  path: string;
+  content: string | null;
+  sha: string | null;
+  url: string | null;
+}
+
+/** Fetch the full, decoded contents of a file (plus its blob sha for updates). */
+export async function getGithubFileContent(input: {
+  path: string;
+  ref?: string;
+}): Promise<GithubFileContent> {
+  const config = requireGithubConfig();
+  const path = toRepoRelativePath(input.path);
+  const ref = input.ref ?? config.defaultBranch;
+
+  if (!path) {
+    return { found: false, path: input.path, content: null, sha: null, url: null };
+  }
+
+  const file = await githubRequestOrNull<GithubContentFileResponse>(
+    config.token,
+    `/repos/${config.owner}/${config.repo}/contents/${encodePath(path)}`,
+    { ref },
+  );
+
+  if (
+    !file ||
+    file.type !== "file" ||
+    !file.content ||
+    (file.encoding && file.encoding !== "base64")
+  ) {
+    return { found: false, path, content: null, sha: null, url: file?.html_url ?? null };
+  }
+
+  const content = Buffer.from(file.content.replace(/\n/g, ""), "base64").toString(
+    "utf8",
+  );
+  return {
+    found: true,
+    path,
+    content,
+    sha: file.sha ?? null,
+    url: file.html_url ?? null,
+  };
+}
+
+export interface DraftFixPullRequest {
+  url: string | null;
+  number: number | null;
+  branch: string;
+  draft: boolean;
+}
+
+export interface FixFileChange {
+  path: string;
+  content: string;
+  /** Blob sha of the file being replaced; omit for new files. */
+  sha?: string | null;
+}
+
+/**
+ * Open a fix PR: branch off the default branch, commit the given file changes
+ * (the actual code fix and/or a fix-plan file) so the branch has a diff, then
+ * open the PR with the Flare handoff as its body. Tries a draft PR first and
+ * falls back to a normal PR for repos/plans that don't support drafts.
+ */
+export async function createFixPullRequest(input: {
+  branch: string;
+  title: string;
+  body: string;
+  changes: FixFileChange[];
+  commitMessage: string;
+}): Promise<DraftFixPullRequest> {
+  const config = requireGithubConfig();
+  const base = config.defaultBranch;
+
+  const ref = await githubRequest<GithubRefResponse>(
+    config.token,
+    `/repos/${config.owner}/${config.repo}/git/ref/heads/${encodeURIComponent(base)}`,
+  );
+
+  await githubWrite(config.token, `/repos/${config.owner}/${config.repo}/git/refs`, {
+    ref: `refs/heads/${input.branch}`,
+    sha: ref.object.sha,
+  });
+
+  // From here the branch exists; if committing or opening the PR fails, delete
+  // the branch so a partial failure doesn't leave an orphaned ref behind.
+  try {
+    for (const change of input.changes) {
+      await githubPut(
+        config.token,
+        `/repos/${config.owner}/${config.repo}/contents/${encodePath(change.path)}`,
+        {
+          message: input.commitMessage,
+          content: Buffer.from(change.content, "utf8").toString("base64"),
+          branch: input.branch,
+          ...(change.sha ? { sha: change.sha } : {}),
+        },
+      );
+    }
+
+    return await openPullRequestWithDraftFallback(config, base, input);
+  } catch (error) {
+    await githubDelete(
+      config.token,
+      `/repos/${config.owner}/${config.repo}/git/refs/heads/${encodePath(input.branch)}`,
+    ).catch(() => {});
+    throw error;
+  }
+}
+
+async function openPullRequestWithDraftFallback(
+  config: { token: string; owner: string; repo: string },
+  base: string,
+  input: { branch: string; title: string; body: string },
+): Promise<DraftFixPullRequest> {
+  const prInput = { title: input.title, head: input.branch, base, body: input.body };
+  const prPath = `/repos/${config.owner}/${config.repo}/pulls`;
+
+  try {
+    const pr = await githubWrite<{ html_url?: string; number?: number }>(
+      config.token,
+      prPath,
+      { ...prInput, draft: true },
+    );
+    return { url: pr.html_url ?? null, number: pr.number ?? null, branch: input.branch, draft: true };
+  } catch (error) {
+    if (!(error instanceof GithubSyncError) || !error.message.includes("(422)")) {
+      throw error;
+    }
+    // Drafts unsupported on this repo/plan — open a normal PR instead.
+    const pr = await githubWrite<{ html_url?: string; number?: number }>(
+      config.token,
+      prPath,
+      { ...prInput, draft: false },
+    );
+    return { url: pr.html_url ?? null, number: pr.number ?? null, branch: input.branch, draft: false };
+  }
 }
 
 export async function getGithubSyncStatus(

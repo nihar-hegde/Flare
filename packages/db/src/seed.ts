@@ -323,6 +323,145 @@ async function main() {
           "The seed scenario does not include live pool metrics beyond the summarized retry log.",
         ],
       },
+      fixHandoff: {
+        headline:
+          "PR #284 introduced unbounded payment retries; cap and back off retries, or roll back v2.14.0 to stop pool exhaustion.",
+        fixPlan: {
+          title: "Add exponential backoff and a retry cap",
+          action: "code_change",
+          detail:
+            "Update src/payments/retry.ts so retryTransaction stops after a small maximum attempt count, backs off between attempts, and reuses the existing pool path instead of opening or holding a connection per retry.",
+          targetFiles: ["src/payments/retry.ts", "src/db/pool.ts"],
+        },
+        proof: [
+          {
+            title: "Top frame is in connection acquisition",
+            detail:
+              "The stack trace fails at src/db/pool.ts:42 in acquireConnection.",
+            kind: "stack_trace",
+            strength: "supports",
+            reference: "src/db/pool.ts:42",
+          },
+          {
+            title: "Suspect PR changed retry and pool code",
+            detail:
+              "PR #284 modified src/db/pool.ts and src/payments/retry.ts immediately before v2.14.0 deployed.",
+            kind: "patch",
+            strength: "supports",
+            reference: "PR #284",
+          },
+          {
+            title: "Runtime signal matches the mechanism",
+            detail:
+              "Logs show retry attempt 47 with no backoff, which explains sustained pool pressure.",
+            kind: "metadata",
+            strength: "supports",
+            reference: "retry attempt 47",
+          },
+        ],
+        validationPlan: [
+          {
+            title: "Run checkout retry regression",
+            command: "pnpm test payments/retry",
+            expectedOutcome:
+              "The retry path stops at the configured cap and does not leak pool connections.",
+          },
+          {
+            title: "Exercise transient payment failure",
+            command: null,
+            expectedOutcome:
+              "A transient gateway failure retries with backoff and returns a controlled failure or success before pool saturation.",
+          },
+          {
+            title: "Watch production incident signals",
+            command: null,
+            expectedOutcome:
+              "Connection acquisition timeouts stop and active pool connections return below saturation.",
+          },
+        ],
+        recommendedOwnerFiles: ["src/payments/retry.ts", "src/db/pool.ts"],
+        remainingRisk: [
+          "The seed data summarizes logs rather than storing full production metrics.",
+          "If rollback is used first, the retry feature still needs a bounded reimplementation before re-release.",
+        ],
+        artifacts: [
+          {
+            kind: "agent_prompt",
+            title: "Agent Prompt",
+            description: "Paste into Codex, Cursor, or another coding agent.",
+            body: [
+              "# Fix this incident",
+              "",
+              "Incident: Connection pool exhaustion after retry logic change in payments-api production.",
+              "Root cause: PR #284 introduced retry logic with no backoff or maximum attempt count, exhausting database connections.",
+              "Primary files: src/payments/retry.ts and src/db/pool.ts.",
+              "",
+              "Implement the smallest fix: cap retries, add exponential backoff, and make sure retry attempts do not open or hold extra pool connections. Add or update a focused regression test for transient payment failure.",
+              "",
+              "Validation: run pnpm test payments/retry, exercise the transient failure path, and confirm connection acquisition timeouts stop.",
+            ].join("\n"),
+          },
+          {
+            kind: "github_issue",
+            title: "GitHub Issue",
+            description: "Ready-to-file issue for tracking the fix.",
+            body: [
+              "# Flare: payment retries exhaust DB pool",
+              "",
+              "PR #284 added unbounded retry behavior in the payment path. After v2.14.0 deployed, checkout requests began timing out in src/db/pool.ts:42.",
+              "",
+              "## Proof",
+              "- Top frame: src/db/pool.ts:42 in acquireConnection",
+              "- PR #284 changed src/payments/retry.ts and src/db/pool.ts",
+              "- Logs show retry attempt 47 with no backoff",
+              "",
+              "## Fix",
+              "Cap retries, add exponential backoff, and ensure the retry loop does not leak or hold pool connections.",
+              "",
+              "## Validation",
+              "- Run pnpm test payments/retry",
+              "- Exercise transient payment failure",
+              "- Confirm pool acquisition timeouts stop",
+            ].join("\n"),
+          },
+          {
+            kind: "pr_comment",
+            title: "PR Comment",
+            description: "Comment for the likely suspect PR.",
+            body: [
+              "## Flare linked this PR to a production incident",
+              "",
+              "This change appears to introduce unbounded payment retries that exhaust the DB connection pool.",
+              "",
+              "Evidence: the incident fails at src/db/pool.ts:42, this PR changed the retry/pool path, and logs show retry attempt 47 with no backoff.",
+              "",
+              "Suggested fix: add a retry cap, exponential backoff, and regression coverage for transient gateway failure.",
+            ].join("\n"),
+          },
+          {
+            kind: "slack_update",
+            title: "Slack Update",
+            description: "Short team update for incident channels.",
+            body:
+              "Flare found the likely cause: PR #284 introduced unbounded payment retries, exhausting DB connections. Fix is to cap retries, add backoff, and validate the checkout transient-failure path.",
+          },
+          {
+            kind: "pr_description",
+            title: "PR Description",
+            description: "Template for the fixing pull request.",
+            body: [
+              "# Summary",
+              "- Cap payment retries and add exponential backoff.",
+              "- Prevent retry attempts from exhausting the DB pool.",
+              "",
+              "# Validation",
+              "- pnpm test payments/retry",
+              "- Manual transient payment failure check",
+              "- Confirm pool timeout incident stops recurring",
+            ].join("\n"),
+          },
+        ],
+      },
       suggestedFixes: [
         {
           title: "Roll back PR #284",
