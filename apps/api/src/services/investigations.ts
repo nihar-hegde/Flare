@@ -11,6 +11,7 @@ import { investigate, type InvestigationResult } from "../lib/ai/investigator.js
 import type { ReportSuspect } from "../lib/ai/schema.js";
 import { env } from "../lib/env.js";
 import { loadInvestigationContext } from "./code-context.js";
+import { syncConfiguredGithubRepo } from "./github-sync.js";
 
 type NewSuspect = typeof incidentSuspects.$inferInsert;
 
@@ -66,6 +67,12 @@ export async function processInvestigation(
   investigationId: string,
 ): Promise<void> {
   try {
+    await syncConfiguredGithubRepo(organizationId).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[investigation ${investigationId}] GitHub sync skipped:`, message);
+      return null;
+    });
+
     const ctx = await loadInvestigationContext(organizationId, incidentId);
     if (!ctx) throw new Error(`Incident ${incidentId} not found`);
 

@@ -106,7 +106,7 @@ export interface FlareInitOptions {
 }
 
 export interface FlareIngestPayload {
-  source: "@flare/sdk";
+  source: "@flare/node-sdk";
   service: string;
   environment: string;
   releaseVersion?: string;

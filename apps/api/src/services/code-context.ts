@@ -10,6 +10,7 @@ import {
 } from "@repo/db";
 import type { InvestigationContext, SimilarIncident } from "../lib/ai/context.js";
 import { buildCandidates, DEFAULT_WINDOW_HOURS } from "../lib/correlation.js";
+import { getConfiguredGithubFullName } from "./github-sync.js";
 
 /** All repositories connected under the org's GitHub integration(s). */
 export async function getOrgRepositories(
@@ -22,7 +23,11 @@ export async function getOrgRepositories(
     ),
     with: { repositories: true },
   });
-  return rows.flatMap((row) => row.repositories);
+  const repositories = rows.flatMap((row) => row.repositories);
+  const configuredFullName = getConfiguredGithubFullName();
+
+  if (!configuredFullName) return repositories;
+  return repositories.filter((repo) => repo.fullName === configuredFullName);
 }
 
 /** Recent PRs / commits / deployments for the given repositories, newest first. */
@@ -110,7 +115,10 @@ export async function loadInvestigationContext(
 
   if (!incident) return null;
 
-  const stackFrames = incident.events[0]?.stackTrace ?? [];
+  const latestEvent = incident.events[0];
+  const stackFrames = latestEvent?.stackTrace ?? [];
+  const analysisTime =
+    latestEvent?.occurredAt ?? latestEvent?.receivedAt ?? incident.lastSeenAt;
   const repositories = await getOrgRepositories(organizationId);
   const repoIds = repositories.map((r) => r.id);
 
@@ -129,7 +137,7 @@ export async function loadInvestigationContext(
     pullRequests: prs,
     commits: cmts,
     deployments: deps,
-    incidentFirstSeen: incident.firstSeenAt,
+    incidentFirstSeen: analysisTime,
     incidentRelease: incident.releaseVersion,
     windowHours: DEFAULT_WINDOW_HOURS,
   });
@@ -137,6 +145,7 @@ export async function loadInvestigationContext(
   return {
     organizationId,
     incident,
+    analysisTime,
     stackFrames,
     repositories: repositories.map((r) => ({
       id: r.id,

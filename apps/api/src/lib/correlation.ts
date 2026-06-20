@@ -83,7 +83,7 @@ function scoreChange({
     const gap = firstSeen.getTime() - occurredAt.getTime();
     if (gap >= 0 && gap <= windowMs) {
       score += Math.round(25 * (1 - gap / windowMs));
-      reasons.push(`Landed ${humanizeGap(gap)} before the incident first appeared`);
+      reasons.push(`Landed ${humanizeGap(gap)} before the investigated occurrence`);
     }
   }
 
@@ -166,7 +166,7 @@ export function buildCandidates({
       const gap = incidentFirstSeen.getTime() - deployment.deployedAt.getTime();
       if (gap >= 0 && gap <= windowMs) {
         score += Math.round(30 * (1 - gap / windowMs));
-        reasons.push(`Deployed ${humanizeGap(gap)} before the incident`);
+        reasons.push(`Deployed ${humanizeGap(gap)} before the investigated occurrence`);
       }
     }
     if (

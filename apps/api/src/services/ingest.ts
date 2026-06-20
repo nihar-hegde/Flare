@@ -301,7 +301,7 @@ export async function ingestIncident(
         incident,
         eventId: event.id,
         created: false,
-        shouldInvestigate: false,
+        shouldInvestigate: true,
       };
     }
 

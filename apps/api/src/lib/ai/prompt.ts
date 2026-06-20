@@ -1,6 +1,8 @@
 import type { CandidateChange, InvestigationContext } from "./context.js";
 import { stackFiles } from "../correlation.js";
 
+const MAX_FALLBACK_FILES_PER_CHANGE = 12;
+
 export const SYSTEM_PROMPT = `You are Flare, an expert site reliability engineer that investigates production incidents.
 
 Your job: given an error/crash detected in production, determine the single most likely root cause, identify which recent code change caused it, and recommend concrete fixes.
@@ -25,6 +27,13 @@ function formatCandidate(c: CandidateChange): string {
   return `- [${c.changeType}] ${c.label} (id: ${c.identifier}, ${when}, heuristic score ${c.score})${reasons}`;
 }
 
+function formatFileList(files: string[]): string {
+  const shown = files.slice(0, MAX_FALLBACK_FILES_PER_CHANGE);
+  const suffix =
+    files.length > shown.length ? `, ... ${files.length - shown.length} more` : "";
+  return shown.join(", ") + suffix;
+}
+
 function incidentBlock(ctx: InvestigationContext): string {
   const i = ctx.incident;
   const frames = ctx.stackFrames
@@ -42,6 +51,7 @@ function incidentBlock(ctx: InvestigationContext): string {
 - Release: ${i.releaseVersion ?? "unknown"}
 - Culprit (reported): ${i.culprit ?? "unknown"}
 - First seen: ${i.firstSeenAt.toISOString()}
+- Investigating occurrence at: ${ctx.analysisTime.toISOString()}
 - Occurrences: ${i.occurrenceCount}${i.affectedUsers != null ? `, affecting ~${i.affectedUsers} users` : ""}
 
 Stack trace (top first):
@@ -78,7 +88,7 @@ export function buildFallbackPrompt(ctx: InvestigationContext): string {
     .slice(0, 10)
     .map((c) => {
       const fileList = c.filesChanged.length
-        ? `\n    files: ${c.filesChanged.join(", ")}`
+        ? `\n    files: ${formatFileList(c.filesChanged)}`
         : "";
       return `${formatCandidate(c)}${fileList}`;
     })

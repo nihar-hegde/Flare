@@ -129,7 +129,7 @@ export class FlareClient {
       | undefined;
 
     return {
-      source: "@flare/sdk",
+      source: "@flare/node-sdk",
       service: this.service,
       environment: this.environment,
       releaseVersion: this.releaseVersion,

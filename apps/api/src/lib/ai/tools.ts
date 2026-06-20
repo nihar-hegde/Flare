@@ -1,9 +1,46 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { InvestigationContext } from "./context.js";
-import { DEFAULT_WINDOW_HOURS, sameFile } from "../correlation.js";
+import { DEFAULT_WINDOW_HOURS, sameFile, stackFiles } from "../correlation.js";
 
 const iso = (date: Date | null | undefined) => (date ? date.toISOString() : null);
+const MAX_RECENT_CHANGES = 10;
+const MAX_FILES_PER_CHANGE = 12;
+const MAX_PR_DETAIL_FILES = 30;
+const MAX_PR_BODY_CHARS = 1_200;
+const MAX_COMMIT_MESSAGE_CHARS = 400;
+
+function truncate(value: string | null | undefined, max: number): string | null {
+  if (!value) return null;
+  return value.length <= max ? value : `${value.slice(0, max - 3)}...`;
+}
+
+function summarizeFiles(
+  files: string[] | null | undefined,
+  traceFiles: string[],
+  limit: number,
+) {
+  const allFiles = files ?? [];
+  const matchingStackFiles = traceFiles.filter((traceFile) =>
+    allFiles.some((file) => sameFile(file, traceFile)),
+  );
+  const relevantFirst = [
+    ...allFiles.filter((file) =>
+      matchingStackFiles.some((traceFile) => sameFile(file, traceFile)),
+    ),
+    ...allFiles.filter(
+      (file) =>
+        !matchingStackFiles.some((traceFile) => sameFile(file, traceFile)),
+    ),
+  ];
+
+  return {
+    filesChanged: relevantFirst.slice(0, limit),
+    filesChangedCount: allFiles.length,
+    filesChangedTruncated: allFiles.length > limit,
+    matchingStackFiles,
+  };
+}
 
 /**
  * The agent's toolset, bound to a single incident's context. Each tool reads
@@ -12,9 +49,10 @@ const iso = (date: Date | null | undefined) => (date ? date.toISOString() : null
  * will back them later — same shapes, swappable implementation.
  */
 export function buildInvestigationTools(ctx: InvestigationContext) {
+  const traceFiles = stackFiles(ctx.stackFrames);
   const withinWindow = (occurredAt: Date | null, windowMs: number) => {
     if (!occurredAt) return false;
-    const gap = ctx.incident.firstSeenAt.getTime() - occurredAt.getTime();
+    const gap = ctx.analysisTime.getTime() - occurredAt.getTime();
     return gap >= 0 && gap <= windowMs;
   };
 
@@ -50,24 +88,35 @@ export function buildInvestigationTools(ctx: InvestigationContext) {
         return {
           pullRequests: ctx.pullRequests
             .filter((pr) => withinWindow(pr.mergedAt, windowMs))
+            .slice(0, MAX_RECENT_CHANGES)
             .map((pr) => ({
               number: pr.number,
               title: pr.title,
               author: pr.author,
-              filesChanged: pr.filesChanged ?? [],
+              ...summarizeFiles(
+                pr.filesChanged,
+                traceFiles,
+                MAX_FILES_PER_CHANGE,
+              ),
               mergedAt: iso(pr.mergedAt),
             })),
           commits: ctx.commits
             .filter((c) => withinWindow(c.authoredAt, windowMs))
+            .slice(0, MAX_RECENT_CHANGES)
             .map((c) => ({
               sha: c.sha,
-              message: c.message,
+              message: truncate(c.message, MAX_COMMIT_MESSAGE_CHARS),
               author: c.author,
-              filesChanged: c.filesChanged ?? [],
+              ...summarizeFiles(
+                c.filesChanged,
+                traceFiles,
+                MAX_FILES_PER_CHANGE,
+              ),
               authoredAt: iso(c.authoredAt),
             })),
           deployments: ctx.deployments
             .filter((d) => withinWindow(d.deployedAt, windowMs))
+            .slice(0, MAX_RECENT_CHANGES)
             .map((d) => ({
               releaseVersion: d.releaseVersion,
               environment: d.environment,
@@ -80,7 +129,7 @@ export function buildInvestigationTools(ctx: InvestigationContext) {
 
     get_pull_request: tool({
       description:
-        "Get the full details of one pull request by number: description, files changed, author, and size.",
+        "Get bounded details for one pull request by number: description, relevant changed files, author, and size.",
       inputSchema: z.object({
         number: z.number().int().describe("The pull request number."),
       }),
@@ -91,11 +140,12 @@ export function buildInvestigationTools(ctx: InvestigationContext) {
           found: true as const,
           number: pr.number,
           title: pr.title,
-          body: pr.body,
+          body: truncate(pr.body, MAX_PR_BODY_CHARS),
+          bodyTruncated: Boolean(pr.body && pr.body.length > MAX_PR_BODY_CHARS),
           author: pr.author,
           branch: pr.branch,
           baseBranch: pr.baseBranch,
-          filesChanged: pr.filesChanged ?? [],
+          ...summarizeFiles(pr.filesChanged, traceFiles, MAX_PR_DETAIL_FILES),
           additions: pr.additions,
           deletions: pr.deletions,
           url: pr.url,

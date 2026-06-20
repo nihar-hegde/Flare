@@ -8,6 +8,12 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
   INGEST_API_KEY: z.string().optional(),
 
+  // GitHub context sync (MVP token-based flow, OAuth later).
+  GITHUB_TOKEN: z.string().optional(),
+  GITHUB_OWNER: z.string().optional(),
+  GITHUB_REPO: z.string().optional(),
+  GITHUB_DEFAULT_BRANCH: z.string().default("main"),
+
   // Database (Supabase / Postgres via Drizzle)
   DATABASE_URL: z.string().url(),
 

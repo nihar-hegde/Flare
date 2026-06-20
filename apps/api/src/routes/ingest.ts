@@ -1,10 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import { env } from "../lib/env.js";
+import { verifySharedApiKey } from "../lib/shared-api-key.js";
 import { CURRENT_ORG_ID } from "../lib/tenant.js";
-import { AppError } from "../middleware/error-handler.js";
 import { ingestIncident } from "../services/ingest.js";
 import {
   processInvestigation,
@@ -111,38 +109,11 @@ const ingestPayloadSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
-function getBearerToken(header: string | undefined): string | null {
-  if (!header) return null;
-  const [scheme, token] = header.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token.trim();
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
-function verifyIngestKey(headers: {
-  authorization?: string;
-  apiKey?: string;
-}): void {
-  if (!env.INGEST_API_KEY) {
-    throw new AppError(500, "INGEST_API_KEY is not configured");
-  }
-
-  const token = getBearerToken(headers.authorization) ?? headers.apiKey;
-  if (!token || !safeEqual(token, env.INGEST_API_KEY)) {
-    throw new AppError(401, "Invalid ingest API key");
-  }
-}
-
 export const ingestRoutes = new Hono<AppEnv>().post(
   "/",
   zValidator("json", ingestPayloadSchema),
   async (c) => {
-    verifyIngestKey({
+    verifySharedApiKey({
       authorization: c.req.header("authorization"),
       apiKey: c.req.header("x-flare-api-key"),
     });

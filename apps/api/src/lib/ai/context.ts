@@ -42,6 +42,7 @@ export interface SimilarIncident {
 export interface InvestigationContext {
   organizationId: string;
   incident: Incident;
+  analysisTime: Date;
   stackFrames: StackFrame[];
   repositories: { id: string; fullName: string; defaultBranch: string }[];
   pullRequests: PullRequest[];
