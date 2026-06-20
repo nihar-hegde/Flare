@@ -13,6 +13,8 @@ const app = new Hono<AppEnv>()
   .use("*", requestId())
   .use("*", logger())
   .use("*", corsMiddleware)
+  // Root health check route
+  .get("/", (c) => c.text("Flare API server is active! 🚀"))
   // Error + not-found handlers
   .onError(errorHandler)
   .notFound((c) => c.json({ success: false, error: "Not Found" }, 404))
