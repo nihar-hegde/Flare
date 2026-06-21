@@ -33,6 +33,7 @@ export function InvestigateButton({
       });
       router.refresh();
     } catch {
+      router.refresh();
       setOptimisticRunning(false);
     }
   }, [incidentId, router]);

@@ -2,7 +2,7 @@
 
 import { Check, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchIncident } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,12 @@ export function InvestigationProgress({
 }) {
   const router = useRouter();
   const [active, setActive] = useState(0);
+  const activeRef = useRef(active);
   const running = isRunning(status);
+
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   useEffect(() => {
     if (!running) return;
@@ -56,7 +61,13 @@ export function InvestigationProgress({
         const next = incident?.investigation?.status ?? null;
         if (!cancelled && next && !isRunning(next)) router.refresh();
       } catch {
-        // transient network error — keep polling
+        // The server-rendered page can still see the API even when a browser
+        // poll misses a response, so keep nudging the route toward fresh data.
+        if (!cancelled) router.refresh();
+      }
+
+      if (!cancelled && activeRef.current === PHASES.length - 1) {
+        router.refresh();
       }
     }, POLL_INTERVAL_MS);
     return () => {
@@ -75,7 +86,8 @@ export function InvestigationProgress({
       </div>
       <ol className="mt-4 space-y-2.5">
         {PHASES.map((label, i) => {
-          const state = i < active ? "done" : i === active ? "active" : "pending";
+          const state =
+            i < active ? "done" : i === active ? "active" : "pending";
           return (
             <li key={label} className="flex items-center gap-2.5 text-sm">
               <span className="grid size-4 shrink-0 place-items-center">

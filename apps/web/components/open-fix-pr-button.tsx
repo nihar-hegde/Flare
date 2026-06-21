@@ -3,7 +3,7 @@
 import { ExternalLink, GitPullRequest, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { api } from "@/lib/api";
+import { api, fetchIncident } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 export interface FixPrState {
@@ -50,7 +50,14 @@ export function OpenFixPrButton({
       setResult(body.data);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open fix PR.");
+      const recovered = await recoverCreatedPr(incidentId);
+      if (recovered) {
+        setResult(recovered);
+        setError(null);
+        router.refresh();
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to open fix PR.");
+      }
     } finally {
       setLoading(false);
     }
@@ -95,4 +102,16 @@ export function OpenFixPrButton({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
+}
+
+async function recoverCreatedPr(
+  incidentId: string,
+): Promise<FixPrState | null> {
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const incident = await fetchIncident(incidentId);
+    return incident?.investigation?.fixPr ?? null;
+  } catch {
+    return null;
+  }
 }
