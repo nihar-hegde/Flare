@@ -1,5 +1,8 @@
 # Flare
 
+### Hosted URL
+https://flare-web-lovat.vercel.app/
+
 Flare is an AI production regression investigator for GitHub-connected apps.
 When production breaks, it links the error to the merged PR or commit that most
 likely caused it, shows the evidence, and hands off a targeted fix.
@@ -12,7 +15,7 @@ and what should we do next?"
 - Local dashboard: `http://localhost:3000`
 - Local API: `http://localhost:8080`
 - Demo payments service: `http://localhost:4000`
-- Product demo link: `<add hosted app or screen recording before submission>`
+- Product demo link: https://flare-web-lovat.vercel.app/
 - Pitch deck: [`docs/Flare_AIBoomi_Pitch_Deck.pptx`](docs/Flare_AIBoomi_Pitch_Deck.pptx)
 - AI impact statement: [`docs/AI_IMPACT_STATEMENT.md`](docs/AI_IMPACT_STATEMENT.md)
 
