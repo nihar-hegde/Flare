@@ -1,119 +1,232 @@
-# 🔥 Flare — The AI Incident Investigator
+# Flare
 
-> When production breaks, Flare automatically correlates the error with your recent
-> code changes to tell you **why it broke, which change caused it, and what to do next** —
-> in seconds, not hours.
+Flare is an AI production regression investigator for GitHub-connected apps.
+When production breaks, it links the error to the merged PR or commit that most
+likely caused it, shows the evidence, and hands off a targeted fix.
 
-Monitoring tools answer *“what is broken?”* Flare answers *“why?”*
+Monitoring tools answer "what broke?" Flare answers "which change broke it, why,
+and what should we do next?"
 
-**Demo:** _<add hosted app / video link here before submission>_
+## Demo
 
----
+- Local dashboard: `http://localhost:3000`
+- Local API: `http://localhost:8080`
+- Demo payments service: `http://localhost:4000`
+- Product demo link: `<add hosted app or screen recording before submission>`
+- Pitch deck: [`docs/Flare_AIBoomi_Pitch_Deck.pptx`](docs/Flare_AIBoomi_Pitch_Deck.pptx)
+- AI impact statement: [`docs/AI_IMPACT_STATEMENT.md`](docs/AI_IMPACT_STATEMENT.md)
 
-## The problem
+## Problem Statement
 
-When a production error fires, the on-call engineer becomes a **human integration layer** —
-jumping between the error tracker, GitHub, deployment history, and Slack to answer one
-question: *which recent change caused this?* It’s slow, stressful, and usually happens at 3 AM.
-The information exists; it’s just scattered, and stitching it together is manual.
+When a production error fires, the on-call engineer has to jump between the
+error tracker, GitHub, deployment history, logs, and Slack to answer one urgent
+question: which recent change caused this?
 
-## What Flare does
+That workflow gets harder as teams ship more AI-assisted code. The code volume
+goes up, but the human mental model does not. Error trackers show the stack
+trace; Flare connects the stack trace to the code change that introduced the
+failure.
 
-1. **Capture** — drop the `@flare/sdk` into any Node.js backend. It catches unhandled errors
-   and sends the stack trace + release/service metadata to Flare. (Other error sources can be
-   added later — same pipeline.)
-2. **Correlate** — Flare pulls recent merged PRs, commits, and deployments from your connected
-   GitHub repo.
-3. **Investigate** — an **agentic AI** (OpenAI via the Vercel AI SDK) reasons over the stack
-   trace and code changes using tools (`get_stack_trace`, `list_recent_changes`, `get_pull_request`,
-   `get_file_blame`, `find_similar_incidents`) to produce a ranked root cause.
-4. **Explain** — the dashboard shows the root cause + confidence, ranked suspect changes,
-   supporting evidence, suggested fixes, and the agent’s full reasoning trace.
+## Users And Context
 
-## The “aha”
+Flare is built for small engineering teams, founders, and AI-heavy product teams
+that ship through GitHub and need faster production debugging without replacing
+their existing observability stack.
 
-The magic is linking a specific stack frame to the exact PR that caused it:
-*the error is in `src/db/pool.ts:42`, which was changed 15 minutes ago in PR #284, which added
-unbounded retries.* Flare makes that connection automatically and explains it.
+The first user is the on-call engineer who needs a credible root-cause report in
+minutes. The buyer is a technical founder or engineering lead who wants lower
+MTTR, fewer rollback guesses, and a safer way to let coding agents help with
+production fixes.
 
----
+## Solution Overview
 
-## Tech stack
+1. Capture a backend error from `@flare/node-sdk` or the ingest API.
+2. Store the incident, latest event, stack trace, request context, breadcrumbs,
+   and release metadata.
+3. Sync recent GitHub PRs, commits, deployments, source windows, and targeted
+   PR patches.
+4. Run a bounded AI investigation with tools for stack traces, recent changes,
+   file blame, source snippets, patches, and similar incidents.
+5. Show a structured report in the dashboard: root cause, confidence, suspects,
+   code evidence, suggested fixes, and the agent trace.
+6. Hand off the fix as an agent prompt, GitHub issue, PR comment, Slack update,
+   or draft fix PR payload.
 
-| Layer | Tech |
-|---|---|
-| Monorepo | Turborepo + pnpm |
-| Frontend | Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn/ui |
-| Backend | Hono (Node) |
-| Database | Supabase Postgres · Drizzle ORM |
-| AI | Vercel AI SDK · OpenAI (agentic tool-calling + structured output) |
-| Ingestion | `@flare/sdk` (Node error-capture package) |
-| Live updates | Supabase Realtime |
-
-## Architecture
-
+```text
+Backend app
+  |  @flare/node-sdk
+  v
+POST /api/ingest
+  |
+  v
+Incident + event in Postgres
+  |
+  +--> GitHub sync: PRs, commits, deployments, source, patches
+  |
+  v
+AI investigation engine
+  |
+  v
+Dashboard: root cause, evidence, fixes, trace, handoff
 ```
- your backend ──(@flare/sdk)──▶  POST /api/ingest  ──▶  incident + event (Postgres)
-                                                              │ auto-trigger
- GitHub repo ──(PRs/commits)──▶  code context  ──────────────┤
-                                                              ▼
-                                                    Agentic AI investigation
-                                              (stack trace ↔ code-change correlation)
-                                                              │
-                                                              ▼
-                                          Dashboard: root cause · ranked suspects ·
-                                          evidence · fixes · agent trace  (live)
-```
 
-## Repository layout
+## What Is Built
 
-```
+- Node SDK for capturing exceptions, request context, trace headers,
+  breadcrumbs, spans, and unhandled errors.
+- Hono API with API-key-protected ingest, incident list/detail endpoints,
+  manual re-investigation, GitHub sync, and fix-PR handoff routes.
+- Supabase Postgres schema and Drizzle migrations for organizations, incidents,
+  events, GitHub context, investigations, suspects, notifications, and timeline
+  activity.
+- AI investigator using the Vercel AI SDK with OpenAI models, tool calling,
+  schema-validated output, step limits, timeouts, and fallback analysis.
+- Next.js dashboard showing incident summaries, stack traces, suspect changes,
+  confidence, evidence, suggested fixes, code evidence, and the full agent
+  trace.
+- Demo payments API that intentionally throws realistic production-style errors
+  so Flare can ingest and investigate them live.
+
+## Tech Stack
+
+| Layer        | Tech                                                           |
+| ------------ | -------------------------------------------------------------- |
+| Monorepo     | Turborepo, pnpm workspaces                                     |
+| Frontend     | Next.js 16, React 19, Tailwind CSS v4, shadcn/ui, lucide-react |
+| Backend      | Hono, Node.js, zod                                             |
+| Database     | Supabase Postgres, Drizzle ORM                                 |
+| AI           | Vercel AI SDK, OpenAI tool calling and structured output       |
+| SDK          | `@flare/node-sdk`                                              |
+| Demo service | Hono payments API                                              |
+| Realtime     | Supabase Realtime, optional                                    |
+
+## Repository Layout
+
+```text
 apps/
-  web/    Next.js dashboard
-  api/    Hono API — ingestion, REST, agentic investigation engine (src/lib/ai)
-  demo/   sample backend that throws realistic errors (drives the live demo)
+  web/       Next.js dashboard
+  api/       Hono API, ingest, GitHub sync, investigation engine
+  demo/      local payments API that drives demo incidents
 packages/
-  db/        Drizzle schema, client, migrations, seed
-  flare-sdk/ the Node error-capture SDK
-  ui/ · eslint-config/ · typescript-config/
+  db/        Drizzle schema, migrations, seed data
+  flare-sdk/ Node SDK published locally as @flare/node-sdk
+  ui/        shared UI primitives
+docs/
+  AI_IMPACT_STATEMENT.md
+  DEMO_SCRIPT.md
+  HANDOFF.md
+  PITCH.md
 ```
 
-## Setup & run
+## Setup And Run
+
+Install dependencies:
 
 ```bash
 pnpm install
+```
 
-# 1. Configure env (see apps/api/.env.example)
-#    - DATABASE_URL / DIRECT_URL  (Supabase connection pooler — IPv4)
-#    - OPENAI_API_KEY             (the investigation engine)
+Create environment files:
 
-# 2. Database
+```bash
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env.local
+cp apps/demo/.env.example apps/demo/.env
+```
+
+Configure `apps/api/.env`:
+
+- `DATABASE_URL`: Supabase transaction pooler connection string.
+- `DIRECT_URL`: Supabase session pooler connection string for migrations.
+- `INGEST_API_KEY`: shared local ingest key, for example
+  `dev-flare-ingest-key`.
+- `OPENAI_API_KEY`: required for live investigations.
+- `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`: optional for live GitHub
+  context sync.
+
+Prepare the database:
+
+```bash
 pnpm --filter @repo/db db:migrate
-pnpm --filter @repo/db db:seed     # demo data
+pnpm --filter @repo/db db:seed
+```
 
-# 3. Run everything (web :3000, api :8080)
+Run Flare:
+
+```bash
 pnpm dev
 ```
 
-Open http://localhost:3000.
+Run the demo payments API in another terminal:
 
-## Models, data & guardrails
+```bash
+pnpm --filter demo dev
+```
 
-See [docs/AI_IMPACT_STATEMENT.md](docs/AI_IMPACT_STATEMENT.md). In short: OpenAI for tool-use +
-structured output; data is the user’s own errors + their GitHub (with permission); guardrails
-include a strict output schema, agent step cap + time budget with single-shot fallback, and
-grounding every suspect back to a real PR/commit row to prevent fabrication.
+Open the dashboard:
 
-## Known limitations
+```text
+http://localhost:3000
+```
 
-- Single hardcoded workspace (Supabase Auth + multi-tenant is post-hackathon).
-- GitHub data is synced per repo; deep `git blame` / diff fetching is roadmap.
-- Slack/email delivery and pgvector similarity are stretch features.
+Trigger a demo incident:
+
+```bash
+curl http://localhost:4000/crash/db-pool
+```
+
+Or use the realistic checkout route:
+
+```bash
+curl "http://localhost:4000/api/checkout?scenario=db-pool"
+```
+
+## Models And Data
+
+Flare uses OpenAI models through the Vercel AI SDK. The investigation model is
+configured with `INVESTIGATOR_MODEL`, defaulting to `openai:gpt-4o`.
+
+Data comes from the user's own systems:
+
+- error events sent by the Flare SDK or ingest API;
+- stack traces, request context, breadcrumbs, spans, and release metadata;
+- connected GitHub repositories, PRs, commits, deployments, source snippets, and
+  targeted PR patches.
+
+No external training dataset is used by the application. GitHub and incident
+data should only be connected with permission from the repository owner.
+
+## Evaluation And Guardrails
+
+- Strict zod schemas validate ingest payloads and AI investigation output.
+- The agent has a maximum step count and a wall-clock timeout.
+- A single-shot structured fallback runs if the tool loop fails.
+- Source and patch tools are budgeted so the model receives narrow evidence, not
+  a whole repository dump.
+- Every suspect is resolved back to a real PR, commit, or deployment row when
+  possible.
+- Confidence is capped when the model has not inspected source or patch
+  evidence.
+- The dashboard exposes the agent trace and evidence so engineers can audit the
+  reasoning before acting.
+
+## Known Limitations And Risks
+
+- Authentication and multi-tenant organization resolution are not production
+  ready; the MVP uses a hardcoded workspace.
+- GitHub integration is token-based. A GitHub App install flow is roadmap.
+- Live Slack, Linear, and email delivery are roadmap.
+- The AI report is an investigation aid, not an automatic production change.
+  Engineers should review evidence and run validation before deploying fixes.
+- The hosted demo link or screen recording still needs to be added before final
+  submission.
 
 ## Team
 
-_<names · roles · contacts>_
+- Name: `<add name>`
+- Role: `<add role>`
+- Contact: `<add email / phone / LinkedIn>`
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [`LICENSE`](LICENSE).

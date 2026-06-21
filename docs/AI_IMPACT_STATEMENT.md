@@ -1,7 +1,5 @@
 # AI Impact Statement
 
-_(~190 words — the submission limit is 200.)_
-
 **What the AI does.** Flare automates production incident root-cause analysis — work that
 normally requires a senior engineer correlating an error's stack trace against recent code
 changes. An agentic loop ingests the stack trace, then calls tools to list recent merged PRs,
